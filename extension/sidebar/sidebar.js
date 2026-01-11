@@ -1221,6 +1221,33 @@ function initTranscriptSearch() {
     nextBtn.addEventListener('click', () => navigateSearch(1));
   }
 
+  // Copy transcript button
+  const copyTranscriptBtn = document.getElementById('copy-transcript-btn');
+  if (copyTranscriptBtn) {
+    copyTranscriptBtn.addEventListener('click', async () => {
+      if (!cachedTranscript) {
+        showError('No transcript available to copy');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(cachedTranscript);
+        // Visual feedback - temporarily change icon to checkmark
+        const originalIcon = copyTranscriptBtn.innerHTML;
+        copyTranscriptBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>`;
+        copyTranscriptBtn.title = 'Copied!';
+        setTimeout(() => {
+          copyTranscriptBtn.innerHTML = originalIcon;
+          copyTranscriptBtn.title = 'Copy transcript';
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy transcript:', err);
+        showError('Failed to copy transcript to clipboard');
+      }
+    });
+  }
+
   // Toggle transcript visibility
   if (toggleBtn && searchableTranscript) {
     toggleBtn.addEventListener('click', () => {
