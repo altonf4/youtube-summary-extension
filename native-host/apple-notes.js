@@ -8,7 +8,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 /**
- * Save a note to Apple Notes
+ * Save a note to Apple Notes (creates or updates existing)
  * @param {Object} options - Note options
  * @param {string} options.folder - Folder name
  * @param {string} options.title - Video title
@@ -17,9 +17,10 @@ const execAsync = promisify(exec);
  * @param {Array<string>} options.keyLearnings - Key learnings array
  * @param {Array<Object>} options.relevantLinks - Relevant links from description
  * @param {string} options.customNotes - Custom notes HTML
- * @returns {Promise<void>}
+ * @param {string} [options.noteId] - Optional note ID to update specific note
+ * @returns {Promise<{created: boolean, noteId: string}>} - Result with note ID
  */
-async function saveNote({ folder, title, url, summary, keyLearnings, relevantLinks = [], customNotes }) {
+async function saveNote({ folder, title, url, summary, keyLearnings, relevantLinks = [], customNotes, noteId = null }) {
   try {
     // Ensure folder exists
     await ensureFolder(folder);
@@ -27,8 +28,10 @@ async function saveNote({ folder, title, url, summary, keyLearnings, relevantLin
     // Format the note content
     const noteBody = formatNoteContent(title, url, summary, keyLearnings, relevantLinks, customNotes);
 
-    // Create the note
-    await createNote(folder, title, noteBody);
+    // Try to find and update existing note, or create new one
+    const result = await createOrUpdateNote(folder, title, noteBody, noteId);
+
+    return result;
 
   } catch (error) {
     throw new Error(`Failed to save to Apple Notes: ${error.message}`);
@@ -61,22 +64,64 @@ async function ensureFolder(folderName) {
 }
 
 /**
- * Create note in Apple Notes
+ * Create or update note in Apple Notes
  * @param {string} folderName - Folder name
  * @param {string} noteTitle - Note title
  * @param {string} noteBody - Note body (HTML)
- * @returns {Promise<void>}
+ * @param {string} [noteId] - Optional note ID to update specific note
+ * @returns {Promise<{created: boolean, noteId: string}>} - Result with note ID
  */
-async function createNote(folderName, noteTitle, noteBody) {
+async function createOrUpdateNote(folderName, noteTitle, noteBody, noteId = null) {
+  // If we have a note ID, try to update that specific note first
+  if (noteId) {
+    const updateByIdScript = `
+      tell application "Notes"
+        try
+          set targetNote to note id "${escapeForAppleScript(noteId)}"
+          set body of targetNote to "${escapeForAppleScript(noteBody)}"
+          return "updated:" & (id of targetNote)
+        on error
+          return "not_found"
+        end try
+      end tell
+    `;
+
+    const idResult = await runAppleScript(updateByIdScript);
+    if (idResult.trim().startsWith('updated:')) {
+      return { created: false, noteId: idResult.trim().replace('updated:', '') };
+    }
+    // Note not found by ID, fall through to title-based search
+  }
+
+  // AppleScript that checks for existing note by title and updates or creates
   const script = `
     tell application "Notes"
       tell folder "${escapeForAppleScript(folderName)}"
-        make new note with properties {name:"${escapeForAppleScript(noteTitle)}", body:"${escapeForAppleScript(noteBody)}"}
+        set existingNote to missing value
+        repeat with aNote in notes
+          if name of aNote is "${escapeForAppleScript(noteTitle)}" then
+            set existingNote to aNote
+            exit repeat
+          end if
+        end repeat
+
+        if existingNote is not missing value then
+          set body of existingNote to "${escapeForAppleScript(noteBody)}"
+          return "updated:" & (id of existingNote)
+        else
+          set newNote to make new note with properties {name:"${escapeForAppleScript(noteTitle)}", body:"${escapeForAppleScript(noteBody)}"}
+          return "created:" & (id of newNote)
+        end if
       end tell
     end tell
   `;
 
-  await runAppleScript(script);
+  const result = await runAppleScript(script);
+  const [action, returnedId] = result.trim().split(':');
+  return {
+    created: action === 'created',
+    noteId: returnedId
+  };
 }
 
 /**

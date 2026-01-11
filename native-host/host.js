@@ -152,7 +152,7 @@ async function handleGenerateSummary(message) {
 
 // Handle save to Apple Notes action
 async function handleSaveToNotes(message) {
-  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, customNotes } = message;
+  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, customNotes, noteId } = message;
 
   if (!folder || !videoTitle || !summary) {
     return {
@@ -162,23 +162,27 @@ async function handleSaveToNotes(message) {
   }
 
   try {
-    logDebug(`Saving to Apple Notes folder: ${folder}`);
+    logDebug(`Saving to Apple Notes folder: ${folder}${noteId ? ` (noteId: ${noteId})` : ''}`);
 
-    await appleNotes.saveNote({
+    const result = await appleNotes.saveNote({
       folder,
       title: videoTitle,
       url: videoUrl,
       summary,
       keyLearnings,
       relevantLinks: relevantLinks || [],
-      customNotes
+      customNotes,
+      noteId
     });
 
-    logDebug('Saved to Apple Notes successfully');
+    const action = result.created ? 'Created' : 'Updated';
+    logDebug(`${action} note in Apple Notes successfully (noteId: ${result.noteId})`);
 
     return {
       success: true,
-      message: `Saved to "${folder}" in Apple Notes`
+      created: result.created,
+      noteId: result.noteId,
+      message: `${action} note in "${folder}"`
     };
 
   } catch (error) {

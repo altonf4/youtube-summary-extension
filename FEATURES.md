@@ -40,13 +40,19 @@ This document tracks all feature requests and implementations for the YouTube Su
 - Shows autocomplete suggestions in folder input field
 - Creates new folders automatically if they don't exist
 
-### 5. Back to Edit After Saving
-**Request:** Allow going back to edit a note after saving it.
+### 5. Back to Edit After Saving (with Update Support)
+**Request:** Allow going back to edit a note after saving it, and update the original note instead of creating duplicates.
 
 **Implementation:**
 - Added "Back to Edit" button on success screen
 - Preserves all content (summary, learnings, custom notes, folder selection)
-- Can edit and save again (creates new note with updated content)
+- **Note ID Caching:** Apple Notes returns a unique note ID after saving
+  - First save: Creates note, caches the note ID
+  - Subsequent saves: Uses cached ID to update the exact same note
+  - Handles edge cases: If note is deleted in Apple Notes, falls back to title-based matching
+- **Fallback matching:** If no cached ID, searches folder for note with matching title
+- Success message indicates whether note was "Created" or "Updated"
+- Note ID is reset when generating a new summary (ensures new video = new note)
 
 ### 6. Progress Tracking During Summary Generation
 **Request:** Show actual Claude progress instead of just a spinner, since generation can take a while.

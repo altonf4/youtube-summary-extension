@@ -3,6 +3,7 @@
 let currentVideoInfo = null;
 let currentSummary = null;
 let selectedLearnings = new Set();
+let currentNoteId = null; // Cached note ID for updating existing notes
 
 // UI Elements
 const videoTitle = document.getElementById('video-title');
@@ -486,16 +487,28 @@ async function handleSaveToNotes() {
       summary: currentSummary.summary,
       keyLearnings: learningsToSave,
       relevantLinks: linksToSave,
-      customNotes: customNotes
+      customNotes: customNotes,
+      noteId: currentNoteId // Send cached note ID if we have one
     });
 
     if (response.success) {
+      // Cache the note ID for future updates
+      currentNoteId = response.noteId;
+
       // Save folder to suggestions
       saveFolderSuggestion(folderName);
 
-      // Show success
+      // Show success with created/updated status
+      const action = response.created ? 'Created new note' : 'Updated existing note';
       document.getElementById('success-details').textContent =
-        `Saved to "${folderName}" folder in Apple Notes`;
+        `${action} in "${folderName}" folder`;
+
+      // Update success header based on action
+      const successHeader = document.querySelector('.success-message h3');
+      if (successHeader) {
+        successHeader.textContent = response.created ? 'Saved to Apple Notes!' : 'Note Updated!';
+      }
+
       showSection(successSection);
     } else {
       throw new Error(response.error || 'Failed to save to Apple Notes');
@@ -543,6 +556,7 @@ function handleRetry() {
 // Handle new summary
 function handleNewSummary() {
   currentSummary = null;
+  currentNoteId = null; // Reset note ID for new summary
   selectedLearnings.clear();
   showSection(generateSection);
 }
