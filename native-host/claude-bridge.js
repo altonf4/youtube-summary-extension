@@ -206,10 +206,11 @@ function callClaudeCode(prompt, onProgress = () => {}) {
     });
 
     // Send prompt to Claude Code via stdin
-    onProgress({ stage: 'sending', message: 'Sending to Claude...', promptLength: prompt.length });
+    const estimatedInputTokens = Math.round(prompt.length / 4);
+    onProgress({ stage: 'sending', message: 'Sending to Claude...', inputTokens: estimatedInputTokens });
     claudeProcess.stdin.write(prompt);
     claudeProcess.stdin.end();
-    onProgress({ stage: 'waiting', message: 'Waiting for Claude to think...' });
+    onProgress({ stage: 'waiting', message: 'Claude is analyzing...', inputTokens: estimatedInputTokens });
 
     // Timeout after 2 minutes
     setTimeout(() => {

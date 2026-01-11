@@ -91,12 +91,18 @@ window.addEventListener('message', (event) => {
   }
 });
 
-// Track completed stages
+// Track completed stages and input tokens
 let completedStages = new Set();
+let cachedInputTokens = 0;
 
 // Update progress UI based on stage
 function updateProgressUI(progress) {
-  const { stage, message, chars } = progress;
+  const { stage, message, chars, inputTokens } = progress;
+
+  // Cache input tokens when we receive them
+  if (inputTokens) {
+    cachedInputTokens = inputTokens;
+  }
 
   // Update progress message
   const progressMessage = document.getElementById('progress-message');
@@ -128,12 +134,16 @@ function updateProgressUI(progress) {
     }
   });
 
-  // Update token count during waiting/streaming (estimate ~4 chars per token)
-  if ((stage === 'waiting' || stage === 'streaming') && chars) {
-    const tokensEl = document.getElementById('token-count');
-    if (tokensEl) {
-      const estimatedTokens = Math.round(chars / 4);
-      tokensEl.textContent = `~${estimatedTokens} tokens`;
+  // Update token count display
+  const tokensEl = document.getElementById('token-count');
+  if (tokensEl) {
+    if (stage === 'waiting') {
+      // Show input tokens during waiting
+      tokensEl.textContent = `~${cachedInputTokens.toLocaleString()} in`;
+    } else if (stage === 'streaming' && chars) {
+      // Show output tokens during streaming
+      const outputTokens = Math.round(chars / 4);
+      tokensEl.textContent = `~${outputTokens.toLocaleString()} out`;
     }
   }
 }
@@ -141,6 +151,7 @@ function updateProgressUI(progress) {
 // Reset progress UI
 function resetProgressUI() {
   completedStages.clear();
+  cachedInputTokens = 0;
   document.querySelectorAll('.progress-stage').forEach(el => {
     el.classList.remove('active', 'completed');
   });
