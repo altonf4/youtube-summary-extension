@@ -117,9 +117,10 @@ npm install --silent 2>/dev/null || npm install
 echo -e "${GREEN}✓${NC} Dependencies installed"
 echo ""
 
-# Make host.js executable
+# Make scripts executable
 chmod +x "$NATIVE_HOST_DIR/host.js"
-echo -e "${GREEN}✓${NC} host.js is now executable"
+chmod +x "$NATIVE_HOST_DIR/run-host.sh"
+echo -e "${GREEN}✓${NC} Native host scripts are now executable"
 echo ""
 
 # =========================================

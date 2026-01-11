@@ -1,7 +1,7 @@
 {
   "name": "com.youtube.summary",
   "description": "Native messaging host for YouTube Summary Extension",
-  "path": "EXTENSION_PATH_PLACEHOLDER/native-host/host.js",
+  "path": "EXTENSION_PATH_PLACEHOLDER/native-host/run-host.sh",
   "type": "stdio",
   "allowed_origins": [
     "chrome-extension://EXTENSION_ID_PLACEHOLDER/"
