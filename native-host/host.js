@@ -102,7 +102,7 @@ async function handleMessage(message) {
 
 // Handle generate summary action
 async function handleGenerateSummary(message) {
-  const { videoId, title, transcript, description, descriptionLinks, customInstructions, requestId } = message;
+  const { videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, requestId } = message;
 
   if (!videoId) {
     return { success: false, error: 'Video ID is required' };
@@ -114,6 +114,7 @@ async function handleGenerateSummary(message) {
 
   try {
     logDebug(`Received transcript: ${transcript.length} characters`);
+    logDebug(`Creator comments: ${creatorComments?.length || 0}, Viewer comments: ${viewerComments?.length || 0}`);
     if (customInstructions) {
       logDebug('Using custom analysis instructions');
     }
@@ -131,7 +132,7 @@ async function handleGenerateSummary(message) {
     // Generate summary with Claude
     logDebug('Generating summary with Claude Code...');
     logDebug(`Description length: ${description?.length || 0} chars, Links: ${descriptionLinks?.length || 0}`);
-    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, customInstructions, onProgress);
+    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress);
 
     if (!summaryResult.success) {
       return summaryResult;

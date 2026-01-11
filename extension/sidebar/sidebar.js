@@ -5,6 +5,8 @@ let currentSummary = null;
 let selectedLearnings = new Set();
 let currentNoteId = null; // Cached note ID for updating existing notes
 let cachedTranscript = null; // Store transcript for search functionality
+let cachedCreatorComments = []; // Store creator comments (high value)
+let cachedViewerComments = []; // Store top viewer comments
 let searchMatches = []; // Store search match positions
 let currentMatchIndex = -1; // Current highlighted match index
 
@@ -256,6 +258,16 @@ async function handleGenerateSummary() {
       throw new Error(transcriptResult.error || 'Failed to extract transcript');
     }
 
+    // Cache comments if available
+    if (transcriptResult.creatorComments) {
+      cachedCreatorComments = transcriptResult.creatorComments;
+      console.log(`Received ${cachedCreatorComments.length} creator comments`);
+    }
+    if (transcriptResult.viewerComments) {
+      cachedViewerComments = transcriptResult.viewerComments;
+      console.log(`Received ${cachedViewerComments.length} viewer comments`);
+    }
+
     // Load custom analysis instructions
     const customInstructions = await loadAnalysisInstructions();
 
@@ -267,6 +279,8 @@ async function handleGenerateSummary() {
       transcript: transcriptResult.transcript,
       description: currentVideoInfo.description || '',
       descriptionLinks: currentVideoInfo.links || [],
+      creatorComments: cachedCreatorComments,
+      viewerComments: cachedViewerComments,
       customInstructions: customInstructions
     });
 

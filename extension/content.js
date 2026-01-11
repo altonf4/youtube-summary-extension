@@ -67,6 +67,114 @@ function getDescriptionLinks() {
   return links;
 }
 
+/**
+ * Extract top comments from the video
+ * Prioritizes creator comments/replies
+ * @param {number} maxComments - Maximum number of comments to extract
+ * @returns {Promise<Object>} - Object with creatorComments and viewerComments arrays
+ */
+async function extractTopComments(maxComments = 20) {
+  const creatorComments = [];
+  const viewerComments = [];
+
+  try {
+    // Check if comments are loaded
+    let commentSection = document.querySelector('ytd-comments#comments');
+    if (!commentSection) {
+      // Comments section doesn't exist, might need to scroll to load
+      return { creatorComments: [], viewerComments: [] };
+    }
+
+    // Scroll to load comments if not visible
+    const commentsHeader = document.querySelector('#comments #header');
+    if (commentsHeader) {
+      commentsHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(1500); // Wait for comments to load
+    }
+
+    // Wait for at least some comments to appear
+    await waitForElement('ytd-comment-thread-renderer', 5000).catch(() => null);
+
+    // Get all comment threads
+    const commentThreads = document.querySelectorAll('ytd-comment-thread-renderer');
+
+    commentThreads.forEach(thread => {
+      try {
+        // Process main comment
+        processComment(thread.querySelector('#comment'), false);
+
+        // Also check for creator replies in the thread
+        const replies = thread.querySelectorAll('ytd-comment-renderer');
+        replies.forEach(reply => processComment(reply, true));
+      } catch (e) {
+        // Skip problematic comments
+      }
+    });
+
+    function processComment(commentEl, isReply) {
+      if (!commentEl) return;
+
+      const body = commentEl.querySelector('#body');
+      if (!body) return;
+
+      // Get comment text
+      const textElement = body.querySelector('#content-text');
+      const text = textElement ? textElement.textContent.trim() : '';
+
+      if (!text || text.length < 10) return; // Skip very short comments
+
+      // Check if this is a creator comment (has author badge)
+      const authorBadge = commentEl.querySelector('#author-comment-badge, ytd-author-comment-badge-renderer');
+      const isCreator = !!authorBadge;
+
+      // Get like count
+      const likeElement = body.querySelector('#vote-count-middle');
+      let likes = 0;
+      if (likeElement) {
+        const likeText = likeElement.textContent.trim();
+        if (likeText) {
+          if (likeText.includes('K')) {
+            likes = parseFloat(likeText) * 1000;
+          } else if (likeText.includes('M')) {
+            likes = parseFloat(likeText) * 1000000;
+          } else {
+            likes = parseInt(likeText, 10) || 0;
+          }
+        }
+      }
+
+      // Get author name
+      const authorElement = body.querySelector('#author-text span, #author-text');
+      const author = authorElement ? authorElement.textContent.trim() : 'Unknown';
+
+      const comment = {
+        text: text,
+        likes: likes,
+        author: author,
+        isReply: isReply
+      };
+
+      if (isCreator) {
+        creatorComments.push(comment);
+      } else {
+        viewerComments.push(comment);
+      }
+    }
+
+    // Sort viewer comments by likes and limit
+    viewerComments.sort((a, b) => b.likes - a.likes);
+
+    return {
+      creatorComments: creatorComments.slice(0, 10), // All creator comments (they're valuable)
+      viewerComments: viewerComments.slice(0, maxComments)
+    };
+
+  } catch (error) {
+    console.error('Error extracting comments:', error);
+    return { creatorComments: [], viewerComments: [] };
+  }
+}
+
 // Inject popup banner styles
 function injectStyles() {
   if (document.getElementById('youtube-summary-styles')) return;
@@ -777,12 +885,24 @@ window.addEventListener('message', async (event) => {
   if (event.data.type === 'GET_TRANSCRIPT') {
     try {
       const transcript = await extractTranscript();
+
+      // Also extract top comments (don't fail if comments can't be extracted)
+      let commentsData = { creatorComments: [], viewerComments: [] };
+      try {
+        commentsData = await extractTopComments(20);
+        console.log(`Extracted ${commentsData.creatorComments.length} creator comments, ${commentsData.viewerComments.length} viewer comments`);
+      } catch (commentError) {
+        console.log('Could not extract comments:', commentError.message);
+      }
+
       const iframe = sidebar?.querySelector('iframe');
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage({
           type: 'TRANSCRIPT_RESULT',
           success: true,
-          transcript: transcript
+          transcript: transcript,
+          creatorComments: commentsData.creatorComments,
+          viewerComments: commentsData.viewerComments
         }, '*');
       }
     } catch (error) {

@@ -152,6 +152,31 @@ This document tracks all feature requests and implementations for the YouTube Su
   - "What were the action items or recommendations?"
   - "List any books or resources referenced"
 
+### 11. YouTube Comments Integration
+**Request:** Include top YouTube comments in the analysis to capture valuable audience insights, with special emphasis on creator comments/replies.
+
+**Implementation:**
+- **Comment Extraction** (`content.js`):
+  - `extractTopComments()` scrolls to load comments and extracts them
+  - Separates **creator comments** (video author replies) from **viewer comments**
+  - Detects creator badge (`ytd-author-comment-badge-renderer`) to identify creator
+  - Extracts comment text, like count, and author
+  - Sorts viewer comments by likes, limits to top 20
+- **Creator vs Viewer Priority**:
+  - Creator comments are treated as authoritative additions to the video
+  - Viewer comments only included if: length >= 30 chars AND likes >= 10
+  - Viewer comments marked as "for context only - may include jokes/memes"
+- **Claude Prompt** (`claude-bridge.js`):
+  - Creator comments section: "treat as authoritative additions/clarifications"
+  - Viewer comments section: "use cautiously, only if genuinely insightful"
+  - New `CREATOR ADDITIONS:` output section for insights from creator comments
+  - Creator insights marked with `[From Creator]` prefix in key learnings
+- **Data Flow**:
+  - content.js → `{ creatorComments: [], viewerComments: [] }`
+  - sidebar.js caches both arrays
+  - host.js passes both to claude-bridge.js
+  - parseResponse() extracts and marks creator additions
+
 ---
 
 ## Architecture Overview
