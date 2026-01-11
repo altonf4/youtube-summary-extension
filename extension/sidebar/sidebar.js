@@ -93,8 +93,6 @@ window.addEventListener('message', (event) => {
 
 // Track completed stages
 let completedStages = new Set();
-let thinkingTimer = null;
-let thinkingStartTime = null;
 
 // Update progress UI based on stage
 function updateProgressUI(progress) {
@@ -106,7 +104,7 @@ function updateProgressUI(progress) {
     progressMessage.textContent = message;
   }
 
-  // Stage order for marking completed
+  // Stage order for marking completed (streaming merged into waiting)
   const stageOrder = ['preparing', 'sending', 'starting', 'waiting', 'streaming', 'parsing', 'complete'];
   const currentIndex = stageOrder.indexOf(stage);
 
@@ -124,21 +122,15 @@ function updateProgressUI(progress) {
 
     if (completedStages.has(elStage)) {
       el.classList.add('completed');
-    } else if (elStage === stage || (stage === 'starting' && elStage === 'sending')) {
+    } else if (elStage === stage || (stage === 'starting' && elStage === 'sending') || (stage === 'streaming' && elStage === 'waiting')) {
+      // Keep "waiting" stage active during streaming since we removed the streaming UI
       el.classList.add('active');
     }
   });
 
-  // Handle thinking timer
-  if (stage === 'waiting') {
-    startThinkingTimer();
-  } else if (stage === 'streaming' || stage === 'parsing' || stage === 'complete') {
-    stopThinkingTimer();
-  }
-
-  // Update streaming tokens count (estimate ~4 chars per token)
-  if (stage === 'streaming' && chars) {
-    const tokensEl = document.getElementById('streaming-tokens');
+  // Update token count during waiting/streaming (estimate ~4 chars per token)
+  if ((stage === 'waiting' || stage === 'streaming') && chars) {
+    const tokensEl = document.getElementById('token-count');
     if (tokensEl) {
       const estimatedTokens = Math.round(chars / 4);
       tokensEl.textContent = `~${estimatedTokens} tokens`;
@@ -146,49 +138,14 @@ function updateProgressUI(progress) {
   }
 }
 
-// Start the thinking timer
-function startThinkingTimer() {
-  if (thinkingTimer) return; // Already running
-
-  thinkingStartTime = Date.now();
-  const timerEl = document.getElementById('thinking-timer');
-
-  const updateTimer = () => {
-    if (!thinkingStartTime) return;
-    const elapsed = Math.floor((Date.now() - thinkingStartTime) / 1000);
-    const minutes = Math.floor(elapsed / 60);
-    const seconds = elapsed % 60;
-    if (timerEl) {
-      timerEl.textContent = minutes > 0
-        ? `${minutes}:${seconds.toString().padStart(2, '0')}`
-        : `${seconds}s`;
-    }
-  };
-
-  updateTimer(); // Initial update
-  thinkingTimer = setInterval(updateTimer, 1000);
-}
-
-// Stop the thinking timer
-function stopThinkingTimer() {
-  if (thinkingTimer) {
-    clearInterval(thinkingTimer);
-    thinkingTimer = null;
-  }
-  thinkingStartTime = null;
-}
-
 // Reset progress UI
 function resetProgressUI() {
   completedStages.clear();
-  stopThinkingTimer();
   document.querySelectorAll('.progress-stage').forEach(el => {
     el.classList.remove('active', 'completed');
   });
-  const tokensEl = document.getElementById('streaming-tokens');
+  const tokensEl = document.getElementById('token-count');
   if (tokensEl) tokensEl.textContent = '';
-  const timerEl = document.getElementById('thinking-timer');
-  if (timerEl) timerEl.textContent = '';
   const progressMessage = document.getElementById('progress-message');
   if (progressMessage) progressMessage.textContent = 'Starting...';
 }

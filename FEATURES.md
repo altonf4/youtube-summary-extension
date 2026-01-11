@@ -68,18 +68,17 @@ This document tracks all feature requests and implementations for the YouTube Su
 - Progress messages update in real-time from native host
 - Streaming character count shows data being received
 
-### 7. Thinking Timer & Token Counter
-**Request:** Show elapsed time during "Claude is thinking" stage (like Claude Code does) and show tokens being streamed.
+### 7. Token Counter During Analysis
+**Request:** Show token count during "Claude is thinking" instead of a timer (timer gave impression of timeout).
 
 **Implementation:**
-- **Thinking Timer:** Live timer starts when entering "waiting" stage
-  - Shows seconds (e.g., "5s") or minutes:seconds (e.g., "1:23")
-  - Uses `tabular-nums` font variant for stable width
-  - Stops when response starts streaming
-- **Token Counter:** Shows estimated tokens during streaming
+- **Simplified Progress Stages:** Removed "Receiving response" stage (overkill)
+  - Now shows: Preparing → Sending → Thinking → Extracting
+- **Token Counter:** Shows estimated output tokens during thinking/streaming
   - Estimates ~4 characters per token
   - Displays as "~250 tokens" in real-time
-- Both use matching pill-style badges in the progress UI
+  - Updates continuously as Claude generates response
+- Cleaner, less anxiety-inducing UX than a countdown timer
 
 ### 8. YouTube Description & Link Extraction
 **Request:** Scrape the YouTube video description to extract useful links that should be saved in the notes.
