@@ -267,12 +267,55 @@ Edit `claude-bridge.js`:
 
 ### Git Practices
 
-1. **Descriptive commit messages** - Format: `<type>: <description>`
-   - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
-   - Example: `feat: add custom prompt settings page`
-2. **Small, focused commits** - One logical change per commit.
-3. **Never commit secrets** - No API keys, passwords, or sensitive data.
-4. **Review before pushing** - Use `git diff` to review changes before committing.
+1. **Commit after every feature/change** - **REQUIRED**: After completing any feature or change, you MUST create a commit and push it to the remote repository.
+
+2. **Detailed commit messages** - Use this format:
+   ```
+   <type>: <short description>
+
+   User Request:
+   <Quote or summarize what the user asked for>
+
+   Changes Made:
+   - <List of specific changes/files modified>
+   - <Implementation details>
+
+   Use Case:
+   <Why this feature exists / what problem it solves>
+
+   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+   ```
+
+   Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`
+
+   Example:
+   ```
+   feat: add draggable floating button
+
+   User Request:
+   "can you make it so that the floating button can be repositioned?"
+
+   Changes Made:
+   - Added drag event handlers in content.js
+   - Position saved to localStorage for persistence
+   - Added grab cursor on hover to indicate draggability
+   - Button stays within viewport bounds
+
+   Use Case:
+   Users may want the button in different positions to avoid
+   overlapping with YouTube UI elements or personal preference.
+
+   Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+   ```
+
+3. **Push after committing** - Always push to remote after creating a commit:
+   ```bash
+   git add -A && git commit -m "..." && git push
+   ```
+
+4. **Small, focused commits** - One logical change per commit.
+5. **Never commit secrets** - No API keys, passwords, or sensitive data.
+6. **Review before pushing** - Use `git diff` to review changes before committing.
 
 ### Architecture Changes
 
