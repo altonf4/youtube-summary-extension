@@ -42,6 +42,9 @@ function init() {
   // Close button
   document.getElementById('close-btn').addEventListener('click', closeSidebar);
 
+  // Follow-up button
+  document.getElementById('follow-up-btn').addEventListener('click', handleFollowUp);
+
   // Load folder suggestions from storage
   loadFolderSuggestions();
 
@@ -646,6 +649,132 @@ async function saveFolderSuggestion(folderName) {
     }
   } catch (error) {
     console.error('Error saving folder suggestion:', error);
+  }
+}
+
+/**
+ * Handle follow-up prompt to extract more information
+ * Sends additional query to Claude and appends new learnings
+ */
+async function handleFollowUp() {
+  const followUpInput = document.getElementById('follow-up-input');
+  const followUpBtn = document.getElementById('follow-up-btn');
+  const followUpLoading = document.getElementById('follow-up-loading');
+  const inputContainer = document.querySelector('.follow-up-input-container');
+
+  const query = followUpInput.value.trim();
+  if (!query) {
+    followUpInput.focus();
+    return;
+  }
+
+  if (!cachedTranscript || !currentVideoInfo) {
+    showError('Transcript or video info not available');
+    return;
+  }
+
+  // Show loading state
+  followUpBtn.disabled = true;
+  inputContainer.style.display = 'none';
+  followUpLoading.style.display = 'flex';
+
+  try {
+    // Get current learnings to provide context
+    const existingLearnings = getEditedLearnings();
+
+    // Send follow-up request to native host
+    const response = await sendNativeMessage({
+      action: 'followUp',
+      videoId: currentVideoInfo.videoId,
+      title: currentVideoInfo.title,
+      transcript: cachedTranscript,
+      query: query,
+      existingLearnings: existingLearnings
+    });
+
+    if (response.success && response.additionalLearnings) {
+      // Append new learnings to the list
+      appendNewLearnings(response.additionalLearnings);
+
+      // Clear the input
+      followUpInput.value = '';
+    } else {
+      throw new Error(response.error || 'Failed to extract additional information');
+    }
+  } catch (error) {
+    console.error('Error in follow-up:', error);
+    // Show error inline instead of switching sections
+    const errorMsg = document.createElement('p');
+    errorMsg.className = 'follow-up-error';
+    errorMsg.textContent = error.message;
+    errorMsg.style.color = '#ef4444';
+    errorMsg.style.fontSize = '13px';
+    errorMsg.style.padding = '8px 16px';
+    inputContainer.parentNode.insertBefore(errorMsg, followUpLoading);
+    setTimeout(() => errorMsg.remove(), 5000);
+  } finally {
+    // Hide loading, show input
+    followUpLoading.style.display = 'none';
+    inputContainer.style.display = 'flex';
+    followUpBtn.disabled = false;
+  }
+}
+
+/**
+ * Append new learnings to the existing list with animation
+ * @param {string[]} newLearnings - Array of new learning strings
+ */
+function appendNewLearnings(newLearnings) {
+  const learningsList = document.getElementById('key-learnings-list');
+  const existingCount = learningsList.querySelectorAll('.learning-item').length;
+
+  newLearnings.forEach((learning, i) => {
+    const index = existingCount + i;
+    const learningItem = document.createElement('div');
+    learningItem.className = 'learning-item new-item';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `learning-${index}`;
+    checkbox.checked = true;
+    checkbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        selectedLearnings.add(index);
+      } else {
+        selectedLearnings.delete(index);
+      }
+    });
+
+    const textArea = document.createElement('textarea');
+    textArea.className = 'learning-text';
+    textArea.id = `learning-text-${index}`;
+    textArea.value = learning;
+    textArea.rows = 1;
+
+    // Auto-resize textarea
+    textArea.addEventListener('input', () => {
+      textArea.style.height = 'auto';
+      textArea.style.height = textArea.scrollHeight + 'px';
+    });
+
+    learningItem.appendChild(checkbox);
+    learningItem.appendChild(textArea);
+    learningsList.appendChild(learningItem);
+
+    // Select the new learning
+    selectedLearnings.add(index);
+
+    // Trigger initial resize
+    setTimeout(() => {
+      textArea.style.height = 'auto';
+      textArea.style.height = textArea.scrollHeight + 'px';
+    }, 0);
+  });
+
+  // Scroll to the first new item
+  const firstNewItem = learningsList.querySelector('.new-item');
+  if (firstNewItem) {
+    firstNewItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
 

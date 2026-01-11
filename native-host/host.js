@@ -76,6 +76,10 @@ async function handleMessage(message) {
         response = await handleListFolders();
         break;
 
+      case 'followUp':
+        response = await handleFollowUp(message);
+        break;
+
       default:
         response = {
           success: false,
@@ -211,6 +215,45 @@ async function handleListFolders() {
     return {
       success: false,
       error: `Failed to list folders: ${error.message}`
+    };
+  }
+}
+
+// Handle follow-up query action
+async function handleFollowUp(message) {
+  const { videoId, title, transcript, query, existingLearnings } = message;
+
+  if (!transcript) {
+    return { success: false, error: 'Transcript is required' };
+  }
+
+  if (!query) {
+    return { success: false, error: 'Query is required' };
+  }
+
+  try {
+    logDebug(`Processing follow-up query: ${query.substring(0, 50)}...`);
+    logDebug(`Existing learnings: ${existingLearnings.length}`);
+
+    // Generate follow-up with Claude
+    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings);
+
+    if (!result.success) {
+      return result;
+    }
+
+    logDebug(`Follow-up generated: ${result.additionalLearnings.length} new learnings`);
+
+    return {
+      success: true,
+      additionalLearnings: result.additionalLearnings
+    };
+
+  } catch (error) {
+    logDebug(`Error in follow-up: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
     };
   }
 }

@@ -147,6 +147,38 @@
           <div id="key-learnings-list" class="learnings-list"></div>
         </div>
 
+        <!-- Follow-up Prompt Section -->
+        <div class="follow-up-section" id="follow-up-section">
+          <div class="follow-up-header">
+            <h2>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              Extract More
+            </h2>
+          </div>
+          <div class="follow-up-input-container">
+            <textarea
+              id="follow-up-input"
+              placeholder="Ask for more details, e.g., 'What specific tools or frameworks were mentioned?' or 'Extract any statistics or numbers discussed'"
+              rows="2"
+            ></textarea>
+            <button id="follow-up-btn" class="follow-up-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+              Ask Claude
+            </button>
+          </div>
+          <div class="follow-up-loading" id="follow-up-loading" style="display: none;">
+            <div class="follow-up-spinner"></div>
+            <span>Claude is extracting more insights...</span>
+          </div>
+        </div>
+
         <!-- Relevant Links Section -->
         <div class="relevant-links" id="relevant-links-section" style="display: none;">
           <h2>Relevant Links <span class="edit-hint">(from description)</span></h2>

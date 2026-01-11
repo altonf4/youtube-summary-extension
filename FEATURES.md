@@ -127,6 +127,31 @@ This document tracks all feature requests and implementations for the YouTube Su
   - Special characters in search query are properly escaped
   - `<mark>` elements used for highlighting to ensure proper styling
 
+### 10. Follow-up Prompts for Additional Extraction
+**Request:** Allow users to continue prompting Claude to extract additional information if the first pass wasn't comprehensive enough.
+
+**Implementation:**
+- **UI** (`sidebar.html`):
+  - "Extract More" section appears after initial summary
+  - Textarea for entering follow-up questions
+  - "Ask Claude" button with loading spinner
+  - Inline error display (auto-dismisses after 5 seconds)
+- **Frontend Logic** (`sidebar.js`):
+  - `handleFollowUp()` - Sends follow-up query with transcript and existing learnings
+  - `appendNewLearnings()` - Adds new bullet points to existing list with animation
+  - New items highlighted with green animation effect
+  - Auto-scrolls to first new item
+- **Backend** (`host.js`, `claude-bridge.js`):
+  - New `followUp` action handler in native host
+  - `generateFollowUp()` function creates focused prompt
+  - Includes existing learnings to avoid duplication
+  - `parseFollowUpResponse()` extracts bullet points from response
+- **Example Use Cases**:
+  - "What specific tools or frameworks were mentioned?"
+  - "Extract any statistics or numbers discussed"
+  - "What were the action items or recommendations?"
+  - "List any books or resources referenced"
+
 ---
 
 ## Architecture Overview

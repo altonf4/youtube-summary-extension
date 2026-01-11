@@ -334,6 +334,130 @@ function parseResponse(response, descriptionLinks = []) {
   };
 }
 
+/**
+ * Generate follow-up insights based on user query
+ * @param {string} videoTitle - YouTube video title
+ * @param {string} transcript - Video transcript
+ * @param {string} query - User's follow-up question
+ * @param {string[]} existingLearnings - Already extracted learnings
+ * @returns {Promise<Object>} - Additional learnings
+ */
+async function generateFollowUp(videoTitle, transcript, query, existingLearnings = []) {
+  const fs = require('fs');
+  const logFile = require('path').join(process.env.HOME, '.youtube-summary-extension.log');
+
+  const log = (msg) => {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(logFile, `[${timestamp}] [claude-bridge:followup] ${msg}\n`);
+  };
+
+  try {
+    // Create follow-up prompt
+    const prompt = createFollowUpPrompt(videoTitle, transcript, query, existingLearnings);
+    log(`Follow-up prompt length: ${prompt.length} characters`);
+
+    // Find claude command
+    const claudeCmd = findClaudeCodeCommand();
+    log(`Using Claude command: ${claudeCmd}`);
+
+    // Call Claude (simpler, no progress tracking needed for follow-up)
+    log('Calling Claude CLI for follow-up...');
+    const response = await callClaudeCode(prompt, () => {});
+    log(`Response received: ${response.length} characters`);
+
+    // Parse the follow-up response
+    const additionalLearnings = parseFollowUpResponse(response);
+    log(`Parsed ${additionalLearnings.length} additional learnings`);
+
+    return {
+      success: true,
+      additionalLearnings
+    };
+
+  } catch (error) {
+    log(`ERROR: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Create prompt for follow-up query
+ * @param {string} videoTitle - Video title
+ * @param {string} transcript - Transcript text
+ * @param {string} query - User's question
+ * @param {string[]} existingLearnings - Already extracted learnings
+ * @returns {string} - Formatted prompt
+ */
+function createFollowUpPrompt(videoTitle, transcript, query, existingLearnings) {
+  // Truncate transcript if too long
+  const maxTranscriptLength = 50000;
+  const truncatedTranscript = transcript.length > maxTranscriptLength
+    ? transcript.substring(0, maxTranscriptLength) + '...[truncated]'
+    : transcript;
+
+  const existingList = existingLearnings.length > 0
+    ? `\n\nAlready extracted learnings (avoid repeating these):\n${existingLearnings.map((l, i) => `${i + 1}. ${l}`).join('\n')}`
+    : '';
+
+  return `You are analyzing a YouTube video transcript to answer a follow-up question.
+
+Video Title: ${videoTitle}
+${existingList}
+
+Transcript:
+${truncatedTranscript}
+
+User's Question: ${query}
+
+Based on the transcript, provide additional key learnings or insights that answer the user's question. Focus specifically on what they asked for.
+
+IMPORTANT: Format your response as a bullet list of learnings/insights. Each item should be on its own line starting with a dash (-).
+
+Example format:
+- First insight or learning point
+- Second insight or learning point
+- Third insight or learning point
+
+Only include information that is actually mentioned or can be directly inferred from the transcript. Be specific and actionable where possible.`;
+}
+
+/**
+ * Parse follow-up response to extract learnings
+ * @param {string} response - Raw response from Claude
+ * @returns {string[]} - Array of learning strings
+ */
+function parseFollowUpResponse(response) {
+  const cleaned = response.trim();
+
+  // Extract bullet points
+  const learnings = cleaned
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
+    .map(line => line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, ''))
+    .filter(line => line.length > 0);
+
+  // If no bullet points found, try to split by sentences
+  if (learnings.length === 0 && cleaned.length > 0) {
+    // Just return the whole response as one learning if it's reasonable length
+    if (cleaned.length < 500) {
+      return [cleaned];
+    }
+    // Otherwise split by periods
+    const sentences = cleaned.split(/\.\s+/)
+      .filter(s => s.length > 20)
+      .slice(0, 5)
+      .map(s => s.trim() + (s.endsWith('.') ? '' : '.'));
+    return sentences;
+  }
+
+  return learnings;
+}
+
 module.exports = {
-  generateSummary
+  generateSummary,
+  generateFollowUp
 };
