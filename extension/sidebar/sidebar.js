@@ -91,9 +91,11 @@ window.addEventListener('message', (event) => {
   }
 });
 
-// Track completed stages and input tokens
+// Track completed stages, input tokens, and elapsed time
 let completedStages = new Set();
 let cachedInputTokens = 0;
+let elapsedTimer = null;
+let elapsedStartTime = null;
 
 // Update progress UI based on stage
 function updateProgressUI(progress) {
@@ -134,29 +136,62 @@ function updateProgressUI(progress) {
     }
   });
 
+  // Handle elapsed timer
+  if (stage === 'waiting' && !elapsedTimer) {
+    startElapsedTimer();
+  } else if (stage === 'parsing' || stage === 'complete') {
+    stopElapsedTimer();
+  }
+
   // Update token count display
   const tokensEl = document.getElementById('token-count');
   if (tokensEl) {
-    if (stage === 'waiting') {
-      // Show input tokens during waiting
-      tokensEl.textContent = `~${cachedInputTokens.toLocaleString()} in`;
-    } else if (stage === 'streaming' && chars) {
-      // Show output tokens during streaming
-      const outputTokens = Math.round(chars / 4);
-      tokensEl.textContent = `~${outputTokens.toLocaleString()} out`;
+    if (stage === 'waiting' || stage === 'streaming') {
+      tokensEl.textContent = `~${cachedInputTokens.toLocaleString()} tokens`;
     }
   }
+}
+
+// Start elapsed timer
+function startElapsedTimer() {
+  if (elapsedTimer) return;
+
+  elapsedStartTime = Date.now();
+  const timerEl = document.getElementById('elapsed-time');
+
+  const updateTimer = () => {
+    if (!elapsedStartTime) return;
+    const elapsed = Math.floor((Date.now() - elapsedStartTime) / 1000);
+    if (timerEl) {
+      timerEl.textContent = `${elapsed}s`;
+    }
+  };
+
+  updateTimer();
+  elapsedTimer = setInterval(updateTimer, 1000);
+}
+
+// Stop elapsed timer
+function stopElapsedTimer() {
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+  elapsedStartTime = null;
 }
 
 // Reset progress UI
 function resetProgressUI() {
   completedStages.clear();
   cachedInputTokens = 0;
+  stopElapsedTimer();
   document.querySelectorAll('.progress-stage').forEach(el => {
     el.classList.remove('active', 'completed');
   });
   const tokensEl = document.getElementById('token-count');
   if (tokensEl) tokensEl.textContent = '';
+  const timerEl = document.getElementById('elapsed-time');
+  if (timerEl) timerEl.textContent = '';
   const progressMessage = document.getElementById('progress-message');
   if (progressMessage) progressMessage.textContent = 'Starting...';
 }
