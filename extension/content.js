@@ -19,6 +19,52 @@ function getVideoTitle() {
   return titleElement ? titleElement.textContent : 'Unknown Title';
 }
 
+// Extract video description from page
+function getVideoDescription() {
+  // Try to get the description - it might need to be expanded first
+  const descriptionContainer = document.querySelector('#description-inner, ytd-text-inline-expander #plain-snippet-text, #description .content');
+
+  if (descriptionContainer) {
+    return descriptionContainer.innerText || descriptionContainer.textContent || '';
+  }
+
+  // Alternative selector for expanded description
+  const expandedDesc = document.querySelector('ytd-text-inline-expander .yt-core-attributed-string');
+  if (expandedDesc) {
+    return expandedDesc.innerText || expandedDesc.textContent || '';
+  }
+
+  return '';
+}
+
+// Extract links from video description
+function getDescriptionLinks() {
+  const links = [];
+  const descriptionContainer = document.querySelector('#description-inner, ytd-text-inline-expander, #description .content');
+
+  if (descriptionContainer) {
+    const anchorElements = descriptionContainer.querySelectorAll('a[href]');
+    anchorElements.forEach(anchor => {
+      const href = anchor.href;
+      const text = anchor.textContent.trim();
+
+      // Filter out YouTube internal links and empty links
+      if (href && !href.includes('youtube.com/hashtag') &&
+          !href.startsWith('https://www.youtube.com/watch') &&
+          !href.includes('/channel/') &&
+          !href.includes('/c/') &&
+          text.length > 0) {
+        links.push({
+          url: href,
+          text: text
+        });
+      }
+    });
+  }
+
+  return links;
+}
+
 // Inject popup banner styles
 function injectStyles() {
   if (document.getElementById('youtube-summary-styles')) return;
@@ -484,6 +530,8 @@ function closeSidebar() {
 function sendVideoInfoToSidebar() {
   const videoId = getVideoId();
   const title = getVideoTitle();
+  const description = getVideoDescription();
+  const descriptionLinks = getDescriptionLinks();
 
   if (!videoId) return;
 
@@ -493,7 +541,9 @@ function sendVideoInfoToSidebar() {
       type: 'VIDEO_INFO',
       videoId: videoId,
       title: title,
-      url: window.location.href
+      url: window.location.href,
+      description: description,
+      links: descriptionLinks
     }, '*');
   }
 }

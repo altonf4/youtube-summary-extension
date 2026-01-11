@@ -11,10 +11,13 @@ const path = require('path');
  * Generate summary using Claude Code CLI
  * @param {string} videoTitle - YouTube video title
  * @param {string} transcript - Video transcript
+ * @param {string} description - Video description
+ * @param {Array} descriptionLinks - Links extracted from description
  * @param {string|null} customInstructions - Custom analysis instructions from user
- * @returns {Promise<Object>} - Summary and key learnings
+ * @param {function} onProgress - Progress callback
+ * @returns {Promise<Object>} - Summary, key learnings, and relevant links
  */
-async function generateSummary(videoTitle, transcript, customInstructions = null, onProgress = () => {}) {
+async function generateSummary(videoTitle, transcript, description = '', descriptionLinks = [], customInstructions = null, onProgress = () => {}) {
   const fs = require('fs');
   const logFile = require('path').join(process.env.HOME, '.youtube-summary-extension.log');
 
@@ -27,7 +30,7 @@ async function generateSummary(videoTitle, transcript, customInstructions = null
     onProgress({ stage: 'preparing', message: 'Preparing transcript...' });
 
     // Craft the prompt with custom instructions wrapped in system format
-    const prompt = createPrompt(videoTitle, transcript, customInstructions);
+    const prompt = createPrompt(videoTitle, transcript, description, descriptionLinks, customInstructions);
     log(`Prompt length: ${prompt.length} characters`);
 
     // Find claude command
@@ -41,15 +44,16 @@ async function generateSummary(videoTitle, transcript, customInstructions = null
 
     // Parse the response
     onProgress({ stage: 'parsing', message: 'Extracting insights...' });
-    const parsed = parseResponse(response);
-    log(`Parsed summary: ${parsed.summary.length} chars, ${parsed.keyLearnings.length} learnings`);
+    const parsed = parseResponse(response, descriptionLinks);
+    log(`Parsed summary: ${parsed.summary.length} chars, ${parsed.keyLearnings.length} learnings, ${parsed.relevantLinks.length} links`);
 
     onProgress({ stage: 'complete', message: 'Done!' });
 
     return {
       success: true,
       summary: parsed.summary,
-      keyLearnings: parsed.keyLearnings
+      keyLearnings: parsed.keyLearnings,
+      relevantLinks: parsed.relevantLinks
     };
 
   } catch (error) {
@@ -78,15 +82,28 @@ Make the summary engaging and the learnings practical.`;
  * Create prompt for Claude - wraps user instructions with system format
  * @param {string} videoTitle - Video title
  * @param {string} transcript - Transcript text
+ * @param {string} description - Video description
+ * @param {Array} descriptionLinks - Links from description
  * @param {string|null} customInstructions - User's custom instructions
  * @returns {string} - Formatted prompt
  */
-function createPrompt(videoTitle, transcript, customInstructions = null) {
+function createPrompt(videoTitle, transcript, description = '', descriptionLinks = [], customInstructions = null) {
   // Truncate transcript if too long (Claude has token limits)
   const maxTranscriptLength = 50000; // ~12,500 tokens
   const truncatedTranscript = transcript.length > maxTranscriptLength
     ? transcript.substring(0, maxTranscriptLength) + '...[truncated]'
     : transcript;
+
+  // Truncate description if too long
+  const maxDescLength = 5000;
+  const truncatedDescription = description.length > maxDescLength
+    ? description.substring(0, maxDescLength) + '...[truncated]'
+    : description;
+
+  // Format links for prompt
+  const linksSection = descriptionLinks.length > 0
+    ? `\n\nLinks from Description:\n${descriptionLinks.map((l, i) => `${i + 1}. ${l.text}: ${l.url}`).join('\n')}`
+    : '';
 
   // Use custom instructions or default
   const instructions = customInstructions || DEFAULT_INSTRUCTIONS;
@@ -99,6 +116,8 @@ ${instructions}
 ---
 
 Video Title: ${videoTitle}
+
+${truncatedDescription ? `Video Description:\n${truncatedDescription}` : ''}${linksSection}
 
 Transcript:
 ${truncatedTranscript}
@@ -114,7 +133,11 @@ KEY LEARNINGS:
 - [Third key learning or takeaway]
 - [Continue with more learnings as appropriate]
 
-Always include both SUMMARY: and KEY LEARNINGS: sections with the exact headers shown above. Provide at least 3 key learnings as bullet points starting with "- ".`;
+RELEVANT LINKS:
+[If the video description contains useful links (resources, tools, references mentioned in the video), list the most relevant ones here. Include the link number from the description. If no links are relevant or none were provided, write "None"]
+- [Link number]. [Brief description of why it's relevant]
+
+Always include SUMMARY:, KEY LEARNINGS:, and RELEVANT LINKS: sections with the exact headers shown above.`;
 }
 
 /**
@@ -224,9 +247,10 @@ function findClaudeCodeCommand() {
 /**
  * Parse Claude's response
  * @param {string} response - Raw response from Claude
- * @returns {Object} - Parsed summary and key learnings
+ * @param {Array} descriptionLinks - Original links from description for matching
+ * @returns {Object} - Parsed summary, key learnings, and relevant links
  */
-function parseResponse(response) {
+function parseResponse(response, descriptionLinks = []) {
   // Clean up the response
   const cleaned = response.trim();
 
@@ -237,7 +261,7 @@ function parseResponse(response) {
     : cleaned.substring(0, 500); // Fallback
 
   // Extract key learnings
-  const learningsMatch = cleaned.match(/KEY LEARNINGS:\s*([\s\S]*?)$/i);
+  const learningsMatch = cleaned.match(/KEY LEARNINGS:\s*([\s\S]*?)(?=RELEVANT LINKS:|$)/i);
   let keyLearnings = [];
 
   if (learningsMatch) {
@@ -250,6 +274,39 @@ function parseResponse(response) {
       .filter(line => line.length > 0);
   }
 
+  // Extract relevant links
+  const linksMatch = cleaned.match(/RELEVANT LINKS:\s*([\s\S]*?)$/i);
+  let relevantLinks = [];
+
+  if (linksMatch && descriptionLinks.length > 0) {
+    const linksText = linksMatch[1].trim();
+
+    // Skip if Claude said "None" or similar
+    if (!linksText.toLowerCase().includes('none') && !linksText.toLowerCase().includes('no relevant')) {
+      const linkLines = linksText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('-') || /^\d+\./.test(line));
+
+      linkLines.forEach(line => {
+        // Try to extract link number from Claude's response (e.g., "1. Description" or "- 1. Description")
+        const numMatch = line.match(/(\d+)/);
+        if (numMatch) {
+          const linkIndex = parseInt(numMatch[1], 10) - 1; // Convert to 0-based index
+          if (linkIndex >= 0 && linkIndex < descriptionLinks.length) {
+            const originalLink = descriptionLinks[linkIndex];
+            // Extract Claude's description of why it's relevant
+            const description = line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
+            relevantLinks.push({
+              ...originalLink,
+              reason: description
+            });
+          }
+        }
+      });
+    }
+  }
+
   // Ensure we have at least some key learnings
   if (keyLearnings.length === 0) {
     keyLearnings = [
@@ -260,7 +317,8 @@ function parseResponse(response) {
 
   return {
     summary: summary || 'Summary could not be generated.',
-    keyLearnings
+    keyLearnings,
+    relevantLinks
   };
 }
 

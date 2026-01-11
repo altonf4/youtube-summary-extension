@@ -98,7 +98,7 @@ async function handleMessage(message) {
 
 // Handle generate summary action
 async function handleGenerateSummary(message) {
-  const { videoId, title, transcript, customInstructions, requestId } = message;
+  const { videoId, title, transcript, description, descriptionLinks, customInstructions, requestId } = message;
 
   if (!videoId) {
     return { success: false, error: 'Video ID is required' };
@@ -126,7 +126,8 @@ async function handleGenerateSummary(message) {
 
     // Generate summary with Claude
     logDebug('Generating summary with Claude Code...');
-    const summaryResult = await claudeBridge.generateSummary(title, transcript, customInstructions, onProgress);
+    logDebug(`Description length: ${description?.length || 0} chars, Links: ${descriptionLinks?.length || 0}`);
+    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, customInstructions, onProgress);
 
     if (!summaryResult.success) {
       return summaryResult;
@@ -151,7 +152,7 @@ async function handleGenerateSummary(message) {
 
 // Handle save to Apple Notes action
 async function handleSaveToNotes(message) {
-  const { folder, videoTitle, videoUrl, summary, keyLearnings, customNotes } = message;
+  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, customNotes } = message;
 
   if (!folder || !videoTitle || !summary) {
     return {
@@ -169,6 +170,7 @@ async function handleSaveToNotes(message) {
       url: videoUrl,
       summary,
       keyLearnings,
+      relevantLinks: relevantLinks || [],
       customNotes
     });
 

@@ -15,16 +15,17 @@ const execAsync = promisify(exec);
  * @param {string} options.url - Video URL
  * @param {string} options.summary - Summary text
  * @param {Array<string>} options.keyLearnings - Key learnings array
+ * @param {Array<Object>} options.relevantLinks - Relevant links from description
  * @param {string} options.customNotes - Custom notes HTML
  * @returns {Promise<void>}
  */
-async function saveNote({ folder, title, url, summary, keyLearnings, customNotes }) {
+async function saveNote({ folder, title, url, summary, keyLearnings, relevantLinks = [], customNotes }) {
   try {
     // Ensure folder exists
     await ensureFolder(folder);
 
     // Format the note content
-    const noteBody = formatNoteContent(title, url, summary, keyLearnings, customNotes);
+    const noteBody = formatNoteContent(title, url, summary, keyLearnings, relevantLinks, customNotes);
 
     // Create the note
     await createNote(folder, title, noteBody);
@@ -84,10 +85,11 @@ async function createNote(folderName, noteTitle, noteBody) {
  * @param {string} url - Video URL
  * @param {string} summary - Summary text
  * @param {Array<string>} keyLearnings - Key learnings
+ * @param {Array<Object>} relevantLinks - Relevant links
  * @param {string} customNotes - Custom notes HTML
  * @returns {string} - Formatted HTML
  */
-function formatNoteContent(title, url, summary, keyLearnings, customNotes) {
+function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = [], customNotes) {
   const date = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -97,6 +99,14 @@ function formatNoteContent(title, url, summary, keyLearnings, customNotes) {
   const learningsList = keyLearnings
     .map(learning => `<li>${escapeHtml(learning)}</li>`)
     .join('\n');
+
+  // Build links section if provided
+  const linksSection = relevantLinks.length > 0 ? `
+<br>
+<h2>Relevant Links</h2>
+<ul>
+${relevantLinks.map(link => `<li><a href="${link.url}">${escapeHtml(link.text)}</a>${link.reason ? ` - ${escapeHtml(link.reason)}` : ''}</li>`).join('\n')}
+</ul>` : '';
 
   // Build custom notes section if provided
   const customNotesSection = customNotes ? `
@@ -117,6 +127,7 @@ function formatNoteContent(title, url, summary, keyLearnings, customNotes) {
 <ul>
 ${learningsList}
 </ul>
+${linksSection}
 ${customNotesSection}
 <br>
 <p style="color: #888; font-size: 12px;">Generated with Claude Code</p>

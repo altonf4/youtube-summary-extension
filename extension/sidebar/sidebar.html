@@ -71,6 +71,7 @@
                 </svg>
               </div>
               <span class="stage-label">Claude is thinking...</span>
+              <span class="stage-timer" id="thinking-timer"></span>
             </div>
             <div class="progress-stage" data-stage="streaming">
               <div class="stage-icon">
@@ -79,7 +80,7 @@
                 </svg>
               </div>
               <span class="stage-label">Receiving response</span>
-              <span class="stage-detail" id="streaming-chars"></span>
+              <span class="stage-detail" id="streaming-tokens"></span>
             </div>
             <div class="progress-stage" data-stage="parsing">
               <div class="stage-icon">
@@ -106,6 +107,12 @@
         <div class="key-learnings">
           <h2>Key Learnings <span class="edit-hint">(click to edit)</span></h2>
           <div id="key-learnings-list" class="learnings-list"></div>
+        </div>
+
+        <!-- Relevant Links Section -->
+        <div class="relevant-links" id="relevant-links-section" style="display: none;">
+          <h2>Relevant Links <span class="edit-hint">(from description)</span></h2>
+          <div id="relevant-links-list" class="links-list"></div>
         </div>
 
         <!-- Custom Notes Section -->

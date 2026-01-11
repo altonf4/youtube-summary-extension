@@ -62,6 +62,43 @@ This document tracks all feature requests and implementations for the YouTube Su
 - Progress messages update in real-time from native host
 - Streaming character count shows data being received
 
+### 7. Thinking Timer & Token Counter
+**Request:** Show elapsed time during "Claude is thinking" stage (like Claude Code does) and show tokens being streamed.
+
+**Implementation:**
+- **Thinking Timer:** Live timer starts when entering "waiting" stage
+  - Shows seconds (e.g., "5s") or minutes:seconds (e.g., "1:23")
+  - Uses `tabular-nums` font variant for stable width
+  - Stops when response starts streaming
+- **Token Counter:** Shows estimated tokens during streaming
+  - Estimates ~4 characters per token
+  - Displays as "~250 tokens" in real-time
+- Both use matching pill-style badges in the progress UI
+
+### 8. YouTube Description & Link Extraction
+**Request:** Scrape the YouTube video description to extract useful links that should be saved in the notes.
+
+**Implementation:**
+- **Description Scraping** (`content.js`):
+  - `getVideoDescription()` extracts the full text from YouTube's description container
+  - `getDescriptionLinks()` extracts all anchor elements and filters out:
+    - YouTube hashtags
+    - Links to other YouTube videos
+    - Channel/user links
+- **Claude Analysis** (`claude-bridge.js`):
+  - Description text and links are included in the Claude prompt
+  - Prompt asks Claude to identify which links are most relevant to the video content
+  - Claude returns link numbers with reasons for relevance
+- **UI Display** (`sidebar.html/js`):
+  - "Relevant Links" section appears when Claude identifies useful links
+  - Each link shows the text, URL, and Claude's reason for selection
+  - Checkboxes allow users to include/exclude specific links before saving
+  - Links are clickable and open in new tabs
+- **Apple Notes** (`apple-notes.js`):
+  - Selected links are saved in a "Relevant Links" section
+  - Each link includes the URL, display text, and relevance reason
+  - HTML formatting preserves clickable links in Apple Notes
+
 ---
 
 ## Architecture Overview
@@ -109,14 +146,14 @@ sidebar.js (updateProgressUI)
 ## Technical Notes
 
 ### Key Files Modified
-- `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding
-- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button
-- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic
-- `extension/sidebar/styles.css` - Progress stage styling
+- `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding, description/link extraction
+- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section
+- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection
+- `extension/sidebar/styles.css` - Progress stage styling, link item styling
 - `extension/background.js` - Progress callback routing
-- `native-host/host.js` - Progress message sending
-- `native-host/claude-bridge.js` - Progress callbacks during Claude execution
-- `native-host/apple-notes.js` - listFolders() function
+- `native-host/host.js` - Progress message sending, description/links pass-through
+- `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing
+- `native-host/apple-notes.js` - listFolders(), relevant links in saved notes
 
 ### Storage
 - `localStorage['youtube-summary-btn-position']` - Floating button position

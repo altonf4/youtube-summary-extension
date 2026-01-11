@@ -71,6 +71,11 @@ window.addEventListener('message', (event) => {
   if (event.data.type === 'VIDEO_INFO') {
     currentVideoInfo = event.data;
     videoTitle.textContent = event.data.title;
+
+    // Show link count if links were found
+    if (event.data.links && event.data.links.length > 0) {
+      console.log(`Found ${event.data.links.length} links in description`);
+    }
   }
 
   if (event.data.type === 'TRANSCRIPT_RESULT') {
@@ -87,6 +92,8 @@ window.addEventListener('message', (event) => {
 
 // Track completed stages
 let completedStages = new Set();
+let thinkingTimer = null;
+let thinkingStartTime = null;
 
 // Update progress UI based on stage
 function updateProgressUI(progress) {
@@ -121,23 +128,66 @@ function updateProgressUI(progress) {
     }
   });
 
-  // Update streaming chars count
+  // Handle thinking timer
+  if (stage === 'waiting') {
+    startThinkingTimer();
+  } else if (stage === 'streaming' || stage === 'parsing' || stage === 'complete') {
+    stopThinkingTimer();
+  }
+
+  // Update streaming tokens count (estimate ~4 chars per token)
   if (stage === 'streaming' && chars) {
-    const charsEl = document.getElementById('streaming-chars');
-    if (charsEl) {
-      charsEl.textContent = `${(chars / 1000).toFixed(1)}k`;
+    const tokensEl = document.getElementById('streaming-tokens');
+    if (tokensEl) {
+      const estimatedTokens = Math.round(chars / 4);
+      tokensEl.textContent = `~${estimatedTokens} tokens`;
     }
   }
+}
+
+// Start the thinking timer
+function startThinkingTimer() {
+  if (thinkingTimer) return; // Already running
+
+  thinkingStartTime = Date.now();
+  const timerEl = document.getElementById('thinking-timer');
+
+  const updateTimer = () => {
+    if (!thinkingStartTime) return;
+    const elapsed = Math.floor((Date.now() - thinkingStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    if (timerEl) {
+      timerEl.textContent = minutes > 0
+        ? `${minutes}:${seconds.toString().padStart(2, '0')}`
+        : `${seconds}s`;
+    }
+  };
+
+  updateTimer(); // Initial update
+  thinkingTimer = setInterval(updateTimer, 1000);
+}
+
+// Stop the thinking timer
+function stopThinkingTimer() {
+  if (thinkingTimer) {
+    clearInterval(thinkingTimer);
+    thinkingTimer = null;
+  }
+  thinkingStartTime = null;
 }
 
 // Reset progress UI
 function resetProgressUI() {
   completedStages.clear();
+  stopThinkingTimer();
   document.querySelectorAll('.progress-stage').forEach(el => {
     el.classList.remove('active', 'completed');
   });
-  const charsEl = document.getElementById('streaming-chars');
-  if (charsEl) charsEl.textContent = '';
+  const tokensEl = document.getElementById('streaming-tokens');
+  if (tokensEl) tokensEl.textContent = '';
+  const timerEl = document.getElementById('thinking-timer');
+  if (timerEl) timerEl.textContent = '';
   const progressMessage = document.getElementById('progress-message');
   if (progressMessage) progressMessage.textContent = 'Starting...';
 }
@@ -196,12 +246,14 @@ async function handleGenerateSummary() {
       videoId: currentVideoInfo.videoId,
       title: currentVideoInfo.title,
       transcript: transcriptResult.transcript,
+      description: currentVideoInfo.description || '',
+      descriptionLinks: currentVideoInfo.links || [],
       customInstructions: customInstructions
     });
 
     if (response.success) {
       currentSummary = response;
-      displaySummary(response.summary, response.keyLearnings);
+      displaySummary(response.summary, response.keyLearnings, response.relevantLinks || []);
       showSection(summarySection);
     } else {
       throw new Error(response.error || 'Failed to generate summary');
@@ -221,10 +273,35 @@ function updateLoadingMessage(message) {
 }
 
 // Display summary and key learnings
-function displaySummary(summary, keyLearnings) {
+function displaySummary(summary, keyLearnings, relevantLinks = []) {
   // Display summary text
   const summaryText = document.getElementById('summary-text');
   summaryText.textContent = summary;
+
+  // Display relevant links if any
+  const linksContainer = document.getElementById('relevant-links-list');
+  const linksSection = document.getElementById('relevant-links-section');
+
+  if (linksContainer && linksSection) {
+    if (relevantLinks.length > 0) {
+      linksContainer.innerHTML = '';
+      relevantLinks.forEach((link, index) => {
+        const linkItem = document.createElement('div');
+        linkItem.className = 'link-item';
+        linkItem.innerHTML = `
+          <input type="checkbox" id="link-${index}" checked>
+          <div class="link-content">
+            <a href="${link.url}" target="_blank" rel="noopener noreferrer">${link.text}</a>
+            ${link.reason ? `<span class="link-reason">${link.reason}</span>` : ''}
+          </div>
+        `;
+        linksContainer.appendChild(linkItem);
+      });
+      linksSection.style.display = 'block';
+    } else {
+      linksSection.style.display = 'none';
+    }
+  }
 
   // Display key learnings as editable checkboxes
   const learningsList = document.getElementById('key-learnings-list');
@@ -359,6 +436,21 @@ function getCustomNotesHtml() {
   return editor.innerHTML.trim();
 }
 
+// Get selected relevant links
+function getSelectedLinks() {
+  const links = [];
+  const linkItems = document.querySelectorAll('.link-item');
+
+  linkItems.forEach((item, index) => {
+    const checkbox = item.querySelector('input[type="checkbox"]');
+    if (checkbox && checkbox.checked && currentSummary.relevantLinks && currentSummary.relevantLinks[index]) {
+      links.push(currentSummary.relevantLinks[index]);
+    }
+  });
+
+  return links;
+}
+
 // Handle Save to Apple Notes
 async function handleSaveToNotes() {
   const folderName = folderInput.value.trim() || 'YouTube Summaries';
@@ -374,8 +466,11 @@ async function handleSaveToNotes() {
   // Get custom notes
   const customNotes = getCustomNotesHtml();
 
-  if (learningsToSave.length === 0 && !customNotes) {
-    showError('Please select at least one key learning or add custom notes');
+  // Get selected links
+  const linksToSave = getSelectedLinks();
+
+  if (learningsToSave.length === 0 && !customNotes && linksToSave.length === 0) {
+    showError('Please select at least one key learning, link, or add custom notes');
     return;
   }
 
@@ -390,6 +485,7 @@ async function handleSaveToNotes() {
       videoUrl: currentVideoInfo.url,
       summary: currentSummary.summary,
       keyLearnings: learningsToSave,
+      relevantLinks: linksToSave,
       customNotes: customNotes
     });
 
