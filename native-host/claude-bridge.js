@@ -134,8 +134,10 @@ KEY LEARNINGS:
 - [Continue with more learnings as appropriate]
 
 RELEVANT LINKS:
-[If the video description contains useful links (resources, tools, references mentioned in the video), list the most relevant ones here. Include the link number from the description. If no links are relevant or none were provided, write "None"]
-- [Link number]. [Brief description of why it's relevant]
+[Review the links from the video description above. Include ANY links that could be useful resources for someone interested in this video's topic - tools, documentation, courses, related content, etc. Be generous - if a link might be helpful, include it. Format each as: the link number followed by a brief reason.]
+- 1. [Why this link is useful]
+- 2. [Why this link is useful]
+(If no links were provided in the description, write "No links provided")
 
 Always include SUMMARY:, KEY LEARNINGS:, and RELEVANT LINKS: sections with the exact headers shown above.`;
 }
@@ -281,26 +283,35 @@ function parseResponse(response, descriptionLinks = []) {
   if (linksMatch && descriptionLinks.length > 0) {
     const linksText = linksMatch[1].trim();
 
-    // Skip if Claude said "None" or similar
-    if (!linksText.toLowerCase().includes('none') && !linksText.toLowerCase().includes('no relevant')) {
-      const linkLines = linksText
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.startsWith('-') || /^\d+\./.test(line));
+    // Skip if Claude said "None", "No links", etc.
+    const skipPhrases = ['none', 'no links', 'no relevant', 'not provided', 'n/a'];
+    const shouldSkip = skipPhrases.some(phrase => linksText.toLowerCase().includes(phrase));
 
-      linkLines.forEach(line => {
-        // Try to extract link number from Claude's response (e.g., "1. Description" or "- 1. Description")
-        const numMatch = line.match(/(\d+)/);
+    if (!shouldSkip) {
+      // Split by lines and look for any line containing a number
+      const lines = linksText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+      lines.forEach(line => {
+        // Try to extract link number from various formats:
+        // "- 1. Description", "1. Description", "• 1: Description", "Link 1 - Description", etc.
+        const numMatch = line.match(/^[-•*]?\s*(?:Link\s*)?(\d+)[\.\:\-\s]/i);
         if (numMatch) {
           const linkIndex = parseInt(numMatch[1], 10) - 1; // Convert to 0-based index
           if (linkIndex >= 0 && linkIndex < descriptionLinks.length) {
             const originalLink = descriptionLinks[linkIndex];
-            // Extract Claude's description of why it's relevant
-            const description = line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, '').trim();
-            relevantLinks.push({
-              ...originalLink,
-              reason: description
-            });
+            // Extract Claude's description - remove the number prefix
+            const reason = line
+              .replace(/^[-•*]\s*/, '')
+              .replace(/^(?:Link\s*)?\d+[\.\:\-\s]+/i, '')
+              .trim();
+
+            // Only add if we haven't already added this link
+            if (!relevantLinks.some(l => l.url === originalLink.url)) {
+              relevantLinks.push({
+                ...originalLink,
+                reason: reason || 'Relevant to video content'
+              });
+            }
           }
         }
       });
