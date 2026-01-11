@@ -138,7 +138,8 @@ async function handleGenerateSummary(message) {
     return {
       success: true,
       summary: summaryResult.summary,
-      keyLearnings: summaryResult.keyLearnings
+      keyLearnings: summaryResult.keyLearnings,
+      relevantLinks: summaryResult.relevantLinks || []
     };
 
   } catch (error) {
