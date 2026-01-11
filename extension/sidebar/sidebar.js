@@ -47,6 +47,9 @@ function init() {
   // Follow-up button
   document.getElementById('follow-up-btn').addEventListener('click', handleFollowUp);
 
+  // Summary toggle button
+  document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
+
   // Load folder suggestions from storage
   loadFolderSuggestions();
 
@@ -60,6 +63,17 @@ function init() {
 // Close sidebar (sends message to content script)
 function closeSidebar() {
   window.parent.postMessage({ type: 'CLOSE_SIDEBAR' }, '*');
+}
+
+// Toggle summary visibility
+function toggleSummary() {
+  const summaryText = document.getElementById('summary-text');
+  const toggleBtn = document.getElementById('toggle-summary-btn');
+
+  if (summaryText && toggleBtn) {
+    const isCollapsed = summaryText.classList.toggle('collapsed');
+    toggleBtn.classList.toggle('expanded', !isCollapsed);
+  }
 }
 
 // Open settings page
@@ -522,12 +536,15 @@ async function handleSaveToNotes() {
   saveBtn.textContent = 'Saving...';
 
   try {
+    // Get edited summary from DOM (user may have edited it)
+    const editedSummary = document.getElementById('summary-text').innerText.trim();
+
     const response = await sendNativeMessage({
       action: 'saveToNotes',
       folder: folderName,
       videoTitle: currentVideoInfo.title,
       videoUrl: currentVideoInfo.url,
-      summary: currentSummary.summary,
+      summary: editedSummary || currentSummary.summary,
       keyLearnings: learningsToSave,
       relevantLinks: linksToSave,
       customNotes: customNotes,
