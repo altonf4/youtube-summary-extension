@@ -467,13 +467,14 @@ function displayActionItems(actionItems) {
     textArea.className = 'action-text';
     textArea.id = `action-text-${index}`;
     textArea.value = item;
-    textArea.rows = 1;
+    textArea.rows = 2; // Start with 2 rows minimum
 
-    // Auto-resize textarea
-    textArea.addEventListener('input', () => {
+    // Auto-resize textarea to fit content
+    const autoResize = () => {
       textArea.style.height = 'auto';
-      textArea.style.height = textArea.scrollHeight + 'px';
-    });
+      textArea.style.height = Math.max(textArea.scrollHeight, 48) + 'px'; // Min 48px (~2 lines)
+    };
+    textArea.addEventListener('input', autoResize);
 
     // Create due date container
     const dueDiv = document.createElement('div');
@@ -497,11 +498,8 @@ function displayActionItems(actionItems) {
     actionEl.appendChild(contentDiv);
     actionList.appendChild(actionEl);
 
-    // Trigger initial resize
-    setTimeout(() => {
-      textArea.style.height = 'auto';
-      textArea.style.height = textArea.scrollHeight + 'px';
-    }, 0);
+    // Trigger initial resize after DOM renders
+    setTimeout(autoResize, 10);
   });
 
   // Update default due dates when dropdown changes
