@@ -105,5 +105,10 @@ if [ -z "$NODE_PATH" ]; then
     exit 1
 fi
 
+# Get the directory containing Node.js and add it to PATH
+# This ensures child processes (like claude CLI) can also find node
+NODE_DIR=$(dirname "$NODE_PATH")
+export PATH="$NODE_DIR:$HOME/.claude/local:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # Run the host script with the found Node.js
 exec "$NODE_PATH" "$HOST_SCRIPT"
