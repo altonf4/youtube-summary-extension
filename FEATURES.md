@@ -104,6 +104,29 @@ This document tracks all feature requests and implementations for the YouTube Su
   - Each link includes the URL, display text, and relevance reason
   - HTML formatting preserves clickable links in Apple Notes
 
+### 9. Transcript Viewer & Search
+**Request:** Add ability to search the raw transcript for copying/pasting content. Show transcript when sidebar opens (before summarizing), and add a searchable transcript pane after summary is generated.
+
+**Implementation:**
+- **Transcript Preview** (before summarization):
+  - When sidebar opens, immediately fetches and displays the raw transcript
+  - Shows character count status indicator
+  - Scrollable transcript area with 300px max-height
+  - Allows users to read/copy from transcript before generating summary
+- **Search Pane** (after summarization):
+  - Search input with real-time highlighting as you type
+  - Debounced search (200ms) for performance
+  - Match count display (e.g., "5 found" or "2/5" when navigating)
+  - Previous/Next navigation buttons with keyboard support (Enter/Shift+Enter)
+  - Current match highlighted in orange, other matches in yellow
+  - Auto-scrolls to current match
+  - Collapsible transcript area with toggle button
+- **Technical Details**:
+  - Transcript is cached after initial fetch for use in both preview and search
+  - Search uses case-insensitive regex matching
+  - Special characters in search query are properly escaped
+  - `<mark>` elements used for highlighting to ensure proper styling
+
 ---
 
 ## Architecture Overview
@@ -152,9 +175,9 @@ sidebar.js (updateProgressUI)
 
 ### Key Files Modified
 - `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding, description/link extraction
-- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section
-- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection
-- `extension/sidebar/styles.css` - Progress stage styling, link item styling
+- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane
+- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality
+- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting
 - `extension/background.js` - Progress callback routing
 - `native-host/host.js` - Progress message sending, description/links pass-through
 - `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing

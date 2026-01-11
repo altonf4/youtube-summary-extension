@@ -4,6 +4,9 @@ let currentVideoInfo = null;
 let currentSummary = null;
 let selectedLearnings = new Set();
 let currentNoteId = null; // Cached note ID for updating existing notes
+let cachedTranscript = null; // Store transcript for search functionality
+let searchMatches = []; // Store search match positions
+let currentMatchIndex = -1; // Current highlighted match index
 
 // UI Elements
 const videoTitle = document.getElementById('video-title');
@@ -41,6 +44,12 @@ function init() {
 
   // Load folder suggestions from storage
   loadFolderSuggestions();
+
+  // Fetch transcript immediately for preview
+  fetchTranscriptForPreview();
+
+  // Set up search functionality
+  initTranscriptSearch();
 }
 
 // Close sidebar (sends message to content script)
@@ -366,6 +375,13 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
 
   // Initialize rich editor toolbar
   initRichEditor();
+
+  // Populate searchable transcript area with cached transcript
+  const searchableTranscript = document.getElementById('searchable-transcript');
+  if (searchableTranscript && cachedTranscript) {
+    searchableTranscript.textContent = cachedTranscript;
+    searchableTranscript.dataset.populated = 'true';
+  }
 }
 
 // Initialize rich text editor
@@ -630,6 +646,220 @@ async function saveFolderSuggestion(folderName) {
     }
   } catch (error) {
     console.error('Error saving folder suggestion:', error);
+  }
+}
+
+/**
+ * Fetch transcript for preview display (before summarization)
+ * Shows the raw transcript in a scrollable area
+ */
+async function fetchTranscriptForPreview() {
+  const transcriptContent = document.getElementById('transcript-content');
+  const transcriptStatus = document.getElementById('transcript-status');
+
+  if (!transcriptContent || !transcriptStatus) return;
+
+  try {
+    // Request transcript from content script
+    const transcriptResult = await requestTranscript();
+
+    if (transcriptResult.success && transcriptResult.transcript) {
+      // Cache the transcript for search
+      cachedTranscript = transcriptResult.transcript;
+
+      // Display in preview area
+      transcriptContent.textContent = transcriptResult.transcript;
+      transcriptStatus.textContent = `${transcriptResult.transcript.length.toLocaleString()} chars`;
+      transcriptStatus.classList.add('ready');
+      transcriptStatus.classList.remove('error');
+    } else {
+      transcriptContent.innerHTML = `<p class="transcript-error">${transcriptResult.error || 'Transcript not available'}</p>`;
+      transcriptStatus.textContent = 'Error';
+      transcriptStatus.classList.add('error');
+      transcriptStatus.classList.remove('ready');
+    }
+  } catch (error) {
+    console.error('Error fetching transcript for preview:', error);
+    transcriptContent.innerHTML = '<p class="transcript-error">Failed to load transcript</p>';
+    transcriptStatus.textContent = 'Error';
+    transcriptStatus.classList.add('error');
+    transcriptStatus.classList.remove('ready');
+  }
+}
+
+/**
+ * Initialize transcript search functionality
+ * Sets up search input, navigation buttons, and toggle
+ */
+function initTranscriptSearch() {
+  const searchInput = document.getElementById('transcript-search-input');
+  const searchResultsCount = document.getElementById('search-results-count');
+  const prevBtn = document.getElementById('search-prev-btn');
+  const nextBtn = document.getElementById('search-next-btn');
+  const toggleBtn = document.getElementById('toggle-transcript-btn');
+  const searchableTranscript = document.getElementById('searchable-transcript');
+
+  if (!searchInput) return;
+
+  // Debounced search
+  let searchTimeout = null;
+  searchInput.addEventListener('input', () => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      performSearch(searchInput.value);
+    }, 200);
+  });
+
+  // Enter key to go to next match
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        navigateSearch(-1);
+      } else {
+        navigateSearch(1);
+      }
+    }
+  });
+
+  // Navigation buttons
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => navigateSearch(-1));
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => navigateSearch(1));
+  }
+
+  // Toggle transcript visibility
+  if (toggleBtn && searchableTranscript) {
+    toggleBtn.addEventListener('click', () => {
+      const isExpanded = searchableTranscript.style.display !== 'none';
+      searchableTranscript.style.display = isExpanded ? 'none' : 'block';
+      toggleBtn.classList.toggle('expanded', !isExpanded);
+
+      // Populate transcript content if expanding for first time
+      if (!isExpanded && cachedTranscript && !searchableTranscript.dataset.populated) {
+        searchableTranscript.textContent = cachedTranscript;
+        searchableTranscript.dataset.populated = 'true';
+      }
+    });
+  }
+}
+
+/**
+ * Perform search in transcript and highlight matches
+ * @param {string} query - Search query
+ */
+function performSearch(query) {
+  const searchableTranscript = document.getElementById('searchable-transcript');
+  const searchResultsCount = document.getElementById('search-results-count');
+  const prevBtn = document.getElementById('search-prev-btn');
+  const nextBtn = document.getElementById('search-next-btn');
+
+  if (!searchableTranscript || !cachedTranscript) return;
+
+  // Reset
+  searchMatches = [];
+  currentMatchIndex = -1;
+
+  // Update navigation buttons state
+  const updateNavButtons = () => {
+    if (prevBtn) prevBtn.disabled = searchMatches.length === 0;
+    if (nextBtn) nextBtn.disabled = searchMatches.length === 0;
+  };
+
+  if (!query || query.trim().length === 0) {
+    // No search query - show plain text
+    searchableTranscript.textContent = cachedTranscript;
+    if (searchResultsCount) searchResultsCount.textContent = '';
+    updateNavButtons();
+    return;
+  }
+
+  // Escape regex special characters
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, 'gi');
+
+  // Find all matches
+  let match;
+  const tempRegex = new RegExp(escapedQuery, 'gi');
+  while ((match = tempRegex.exec(cachedTranscript)) !== null) {
+    searchMatches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[0]
+    });
+  }
+
+  // Show transcript area when searching
+  searchableTranscript.style.display = 'block';
+  const toggleBtn = document.getElementById('toggle-transcript-btn');
+  if (toggleBtn) toggleBtn.classList.add('expanded');
+
+  // Highlight matches
+  if (searchMatches.length > 0) {
+    const highlightedText = cachedTranscript.replace(regex, '<mark class="highlight">$1</mark>');
+    searchableTranscript.innerHTML = highlightedText;
+    if (searchResultsCount) searchResultsCount.textContent = `${searchMatches.length} found`;
+
+    // Go to first match
+    currentMatchIndex = 0;
+    highlightCurrentMatch();
+  } else {
+    searchableTranscript.textContent = cachedTranscript;
+    if (searchResultsCount) searchResultsCount.textContent = 'No matches';
+  }
+
+  updateNavButtons();
+}
+
+/**
+ * Navigate to next/previous search match
+ * @param {number} direction - 1 for next, -1 for previous
+ */
+function navigateSearch(direction) {
+  if (searchMatches.length === 0) return;
+
+  // Remove current highlight
+  const searchableTranscript = document.getElementById('searchable-transcript');
+  if (!searchableTranscript) return;
+
+  // Update index
+  currentMatchIndex += direction;
+  if (currentMatchIndex >= searchMatches.length) currentMatchIndex = 0;
+  if (currentMatchIndex < 0) currentMatchIndex = searchMatches.length - 1;
+
+  highlightCurrentMatch();
+}
+
+/**
+ * Highlight the current match and scroll to it
+ */
+function highlightCurrentMatch() {
+  const searchableTranscript = document.getElementById('searchable-transcript');
+  const searchResultsCount = document.getElementById('search-results-count');
+
+  if (!searchableTranscript) return;
+
+  // Remove existing current highlights
+  const existingCurrent = searchableTranscript.querySelectorAll('.highlight.current');
+  existingCurrent.forEach(el => el.classList.remove('current'));
+
+  // Add current class to current match
+  const highlights = searchableTranscript.querySelectorAll('.highlight');
+  if (highlights[currentMatchIndex]) {
+    highlights[currentMatchIndex].classList.add('current');
+
+    // Scroll into view
+    highlights[currentMatchIndex].scrollIntoView({
+      behavior: 'smooth',
+      block: 'center'
+    });
+  }
+
+  // Update count display
+  if (searchResultsCount && searchMatches.length > 0) {
+    searchResultsCount.textContent = `${currentMatchIndex + 1}/${searchMatches.length}`;
   }
 }
 
