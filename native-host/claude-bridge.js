@@ -190,8 +190,8 @@ function callClaudeCode(prompt, onProgress = () => {}) {
 
     onProgress({ stage: 'starting', message: 'Starting Claude CLI...' });
 
-    // Spawn Claude process (use --print for non-interactive mode, default model)
-    const claudeProcess = spawn(claudeCommand, ['--print'], {
+    // Spawn Claude process (use --print for non-interactive mode, sonnet model for cost efficiency)
+    const claudeProcess = spawn(claudeCommand, ['--print', '--model', 'sonnet'], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
