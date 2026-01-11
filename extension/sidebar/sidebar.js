@@ -233,6 +233,9 @@ async function handleGenerateSummary() {
   resetProgressUI();
   showSection(loadingSection);
 
+  // Notify parent that analysis started
+  window.parent.postMessage({ type: 'ANALYSIS_STARTED' }, '*');
+
   try {
     // Step 1: Get transcript from content script (scrapes YouTube DOM)
     const transcriptResult = await requestTranscript();
@@ -259,12 +262,16 @@ async function handleGenerateSummary() {
       currentSummary = response;
       displaySummary(response.summary, response.keyLearnings, response.relevantLinks || []);
       showSection(summarySection);
+      // Notify parent that analysis completed
+      window.parent.postMessage({ type: 'ANALYSIS_COMPLETE' }, '*');
     } else {
       throw new Error(response.error || 'Failed to generate summary');
     }
   } catch (error) {
     console.error('Error generating summary:', error);
     showError(error.message || 'Failed to generate summary. Please try again.');
+    // Notify parent that analysis failed (reset state)
+    window.parent.postMessage({ type: 'ANALYSIS_RESET' }, '*');
   }
 }
 
@@ -554,6 +561,8 @@ function showError(message) {
 // Handle retry
 function handleRetry() {
   showSection(generateSection);
+  // Notify parent to reset floating button state
+  window.parent.postMessage({ type: 'ANALYSIS_RESET' }, '*');
 }
 
 // Handle new summary
@@ -562,6 +571,8 @@ function handleNewSummary() {
   currentNoteId = null; // Reset note ID for new summary
   selectedLearnings.clear();
   showSection(generateSection);
+  // Notify parent to reset floating button state
+  window.parent.postMessage({ type: 'ANALYSIS_RESET' }, '*');
 }
 
 // Handle back to edit (preserves all content)

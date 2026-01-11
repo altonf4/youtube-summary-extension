@@ -6,6 +6,8 @@ let popupBanner = null;
 let floatingButton = null;
 let isSidebarOpen = false;
 let bannerDismissedForVideo = null;
+let isAnalyzing = false;
+let analysisComplete = false;
 
 // Extract video ID from YouTube URL
 function getVideoId() {
@@ -175,6 +177,73 @@ function injectStyles() {
       to {
         opacity: 0;
         transform: scale(0.8);
+      }
+    }
+
+    /* Analyzing state - spinning progress ring */
+    #youtube-summary-float-btn.analyzing {
+      box-shadow: 0 4px 24px rgba(102, 126, 234, 0.3), 0 0 0 1px rgba(102, 126, 234, 0.2);
+    }
+
+    #youtube-summary-float-btn.analyzing::before {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: -3px;
+      right: -3px;
+      bottom: -3px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: #667eea;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #youtube-summary-float-btn.analyzing svg {
+      color: #667eea;
+    }
+
+    /* Complete state - green with badge */
+    #youtube-summary-float-btn.complete {
+      box-shadow: 0 4px 24px rgba(16, 185, 129, 0.3), 0 0 0 1px rgba(16, 185, 129, 0.2);
+    }
+
+    #youtube-summary-float-btn.complete svg {
+      color: #10b981;
+    }
+
+    #youtube-summary-float-btn .complete-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 18px;
+      height: 18px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      animation: popIn 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    }
+
+    #youtube-summary-float-btn .complete-badge svg {
+      width: 12px;
+      height: 12px;
+      color: white;
+    }
+
+    @keyframes popIn {
+      from {
+        transform: scale(0);
+        opacity: 0;
+      }
+      to {
+        transform: scale(1);
+        opacity: 1;
       }
     }
 
@@ -359,6 +428,9 @@ function createFloatingButton() {
     </svg>
   `;
 
+  // Apply state classes
+  updateFloatingButtonState();
+
   // Load saved position
   const savedPos = getSavedButtonPosition();
   if (savedPos) {
@@ -371,6 +443,32 @@ function createFloatingButton() {
   makeButtonDraggable(floatingButton);
 
   document.body.appendChild(floatingButton);
+}
+
+// Update floating button visual state
+function updateFloatingButtonState() {
+  if (!floatingButton) return;
+
+  floatingButton.classList.remove('analyzing', 'complete');
+
+  // Remove any existing badge
+  const existingBadge = floatingButton.querySelector('.complete-badge');
+  if (existingBadge) existingBadge.remove();
+
+  if (isAnalyzing) {
+    floatingButton.classList.add('analyzing');
+    floatingButton.title = 'Analyzing video...';
+  } else if (analysisComplete) {
+    floatingButton.classList.add('complete');
+    floatingButton.title = 'Summary ready! Click to view';
+    // Add checkmark badge
+    const badge = document.createElement('div');
+    badge.className = 'complete-badge';
+    badge.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    floatingButton.appendChild(badge);
+  } else {
+    floatingButton.title = 'AI Summary (drag to reposition)';
+  }
 }
 
 // Get saved button position from localStorage
@@ -578,6 +676,10 @@ function onUrlChange() {
     isSidebarOpen = false;
   }
 
+  // Reset analysis state for new video
+  isAnalyzing = false;
+  analysisComplete = false;
+
   // Reset dismissed state for new video
   if (videoId !== bannerDismissedForVideo) {
     bannerDismissedForVideo = null;
@@ -615,6 +717,18 @@ if (document.readyState === 'loading') {
 // Listen for progress updates from background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PROGRESS_UPDATE') {
+    // Track analysis state based on progress
+    const stage = message.progress?.stage;
+    if (stage && stage !== 'complete') {
+      isAnalyzing = true;
+      analysisComplete = false;
+      updateFloatingButtonState();
+    } else if (stage === 'complete') {
+      isAnalyzing = false;
+      analysisComplete = true;
+      updateFloatingButtonState();
+    }
+
     // Forward to sidebar iframe
     const iframe = sidebar?.querySelector('iframe');
     if (iframe && iframe.contentWindow) {
@@ -630,6 +744,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 window.addEventListener('message', async (event) => {
   if (event.data.type === 'REQUEST_VIDEO_INFO') {
     sendVideoInfoToSidebar();
+  }
+
+  if (event.data.type === 'ANALYSIS_STARTED') {
+    isAnalyzing = true;
+    analysisComplete = false;
+    updateFloatingButtonState();
+  }
+
+  if (event.data.type === 'ANALYSIS_COMPLETE') {
+    isAnalyzing = false;
+    analysisComplete = true;
+    updateFloatingButtonState();
+  }
+
+  if (event.data.type === 'ANALYSIS_RESET') {
+    isAnalyzing = false;
+    analysisComplete = false;
+    updateFloatingButtonState();
   }
 
   if (event.data.type === 'CLOSE_SIDEBAR') {
