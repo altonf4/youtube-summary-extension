@@ -16,17 +16,18 @@ const execAsync = promisify(exec);
  * @param {string} options.summary - Summary text
  * @param {Array<string>} options.keyLearnings - Key learnings array
  * @param {Array<Object>} options.relevantLinks - Relevant links from description
+ * @param {Array<Object>} options.actionItems - Action items with text and dueDate
  * @param {string} options.customNotes - Custom notes HTML
  * @param {string} [options.noteId] - Optional note ID to update specific note
  * @returns {Promise<{created: boolean, noteId: string}>} - Result with note ID
  */
-async function saveNote({ folder, title, url, summary, keyLearnings, relevantLinks = [], customNotes, noteId = null }) {
+async function saveNote({ folder, title, url, summary, keyLearnings, relevantLinks = [], actionItems = [], customNotes, noteId = null }) {
   try {
     // Ensure folder exists
     await ensureFolder(folder);
 
     // Format the note content
-    const noteBody = formatNoteContent(title, url, summary, keyLearnings, relevantLinks, customNotes);
+    const noteBody = formatNoteContent(title, url, summary, keyLearnings, relevantLinks, actionItems, customNotes);
 
     // Try to find and update existing note, or create new one
     const result = await createOrUpdateNote(folder, title, noteBody, noteId);
@@ -131,10 +132,11 @@ async function createOrUpdateNote(folderName, noteTitle, noteBody, noteId = null
  * @param {string} summary - Summary text
  * @param {Array<string>} keyLearnings - Key learnings
  * @param {Array<Object>} relevantLinks - Relevant links
+ * @param {Array<Object>} actionItems - Action items with text and dueDate
  * @param {string} customNotes - Custom notes HTML
  * @returns {string} - Formatted HTML
  */
-function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = [], customNotes) {
+function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = [], actionItems = [], customNotes) {
   const date = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
@@ -144,6 +146,17 @@ function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = []
   const learningsList = keyLearnings
     .map(learning => `<li>${escapeHtml(learning)}</li>`)
     .join('\n');
+
+  // Build action items section if provided
+  const actionItemsSection = actionItems.length > 0 ? `
+<br>
+<h2>Action Items</h2>
+<ul>
+${actionItems.map(item => {
+    const dueDateStr = item.dueDate ? ` <em style="color: #888;">(Due: ${formatDisplayDate(item.dueDate)})</em>` : '';
+    return `<li>☐ ${escapeHtml(item.text)}${dueDateStr}</li>`;
+  }).join('\n')}
+</ul>` : '';
 
   // Build links section if provided
   const linksSection = relevantLinks.length > 0 ? `
@@ -172,12 +185,23 @@ ${relevantLinks.map(link => `<li><a href="${link.url}">${escapeHtml(link.text)}<
 <ul>
 ${learningsList}
 </ul>
+${actionItemsSection}
 ${linksSection}
 ${customNotesSection}
 <br>
 <p style="color: #888; font-size: 12px;">Generated with Claude Code</p>
 </div>
   `.trim();
+}
+
+/**
+ * Format ISO date string for display
+ * @param {string} isoDate - Date in YYYY-MM-DD format
+ * @returns {string} - Formatted date string
+ */
+function formatDisplayDate(isoDate) {
+  const date = new Date(isoDate);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 /**

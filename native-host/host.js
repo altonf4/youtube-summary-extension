@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const claudeBridge = require('./claude-bridge');
 const appleNotes = require('./apple-notes');
+const appleReminders = require('./apple-reminders');
 const logger = require('./logger');
 
 // Native messaging protocol uses length-prefixed messages
@@ -145,6 +146,7 @@ async function handleGenerateSummary(message) {
       success: true,
       summary: summaryResult.summary,
       keyLearnings: summaryResult.keyLearnings,
+      actionItems: summaryResult.actionItems || [],
       relevantLinks: summaryResult.relevantLinks || []
     };
 
@@ -159,7 +161,7 @@ async function handleGenerateSummary(message) {
 
 // Handle save to Apple Notes action
 async function handleSaveToNotes(message) {
-  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, customNotes, noteId } = message;
+  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, actionItems, customNotes, noteId } = message;
 
   if (!folder || !videoTitle || !summary) {
     return {
@@ -171,25 +173,46 @@ async function handleSaveToNotes(message) {
   try {
     logDebug(`Saving to Apple Notes folder: ${folder}${noteId ? ` (noteId: ${noteId})` : ''}`);
 
-    const result = await appleNotes.saveNote({
+    // Save to Apple Notes
+    const noteResult = await appleNotes.saveNote({
       folder,
       title: videoTitle,
       url: videoUrl,
       summary,
       keyLearnings,
       relevantLinks: relevantLinks || [],
+      actionItems: actionItems || [],
       customNotes,
       noteId
     });
 
-    const action = result.created ? 'Created' : 'Updated';
-    logDebug(`${action} note in Apple Notes successfully (noteId: ${result.noteId})`);
+    const action = noteResult.created ? 'Created' : 'Updated';
+    logDebug(`${action} note in Apple Notes successfully (noteId: ${noteResult.noteId})`);
+
+    // Create reminders if action items exist
+    let remindersResult = { success: true, count: 0 };
+    if (actionItems && actionItems.length > 0) {
+      logDebug(`Creating ${actionItems.length} reminders in Apple Reminders...`);
+      try {
+        remindersResult = await appleReminders.createReminders({
+          listName: folder,  // Use same folder name for reminders list
+          videoTitle,
+          videoUrl,
+          actionItems
+        });
+        logDebug(`Created ${remindersResult.count} reminders successfully`);
+      } catch (reminderError) {
+        // Don't fail the whole operation if reminders fail
+        logDebug(`Warning: Failed to create reminders: ${reminderError.message}`);
+      }
+    }
 
     return {
       success: true,
-      created: result.created,
-      noteId: result.noteId,
-      message: `${action} note in "${folder}"`
+      created: noteResult.created,
+      noteId: noteResult.noteId,
+      remindersCreated: remindersResult.count,
+      message: `${action} note in "${folder}"${remindersResult.count > 0 ? ` and created ${remindersResult.count} reminder${remindersResult.count > 1 ? 's' : ''}` : ''}`
     };
 
   } catch (error) {

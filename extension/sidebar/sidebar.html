@@ -154,6 +154,31 @@
           <div id="key-learnings-list" class="learnings-list"></div>
         </div>
 
+        <!-- Action Items Section -->
+        <div class="action-items" id="action-items-section" style="display: none;">
+          <h2>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"></path>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+            </svg>
+            Action Items
+            <span class="edit-hint">(saved to Reminders)</span>
+          </h2>
+          <div class="action-items-settings">
+            <label>
+              <span>Default due:</span>
+              <select id="default-due-days">
+                <option value="1">Tomorrow</option>
+                <option value="3">3 days</option>
+                <option value="7" selected>1 week</option>
+                <option value="14">2 weeks</option>
+                <option value="30">1 month</option>
+              </select>
+            </label>
+          </div>
+          <div id="action-items-list" class="action-items-list"></div>
+        </div>
+
         <!-- Follow-up Prompt Section -->
         <div class="follow-up-section" id="follow-up-section">
           <div class="follow-up-header">

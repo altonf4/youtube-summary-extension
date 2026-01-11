@@ -221,6 +221,40 @@ This document tracks all feature requests and implementations for the YouTube Su
   - `claude-bridge.js` - Uses `logger.log(msg, 'claude-bridge')` for both `generateSummary` and `generateFollowUp`
   - Documentation updated in `install.sh`, `AGENTS.md`, `README.md`
 
+### 15. Actionable TODOs with Apple Reminders Integration
+**Request:** Generate actionable tasks from video summaries and sync them to Apple Reminders with due dates.
+
+**Implementation:**
+- **New ACTION ITEMS Section** (`claude-bridge.js`):
+  - Claude now generates a separate ACTION ITEMS section alongside KEY LEARNINGS
+  - Action items are specific, actionable tasks starting with verbs (Try, Implement, Research, etc.)
+  - Limited to 3-5 concrete next steps per video
+  - Parsed separately from key learnings for distinct handling
+- **Sidebar UI** (`sidebar.html`, `sidebar.js`):
+  - New "Action Items" section with checkbox icon and "(saved to Reminders)" hint
+  - Default due date dropdown (Tomorrow, 3 days, 1 week, 2 weeks, 1 month)
+  - Each action item has: checkbox, editable textarea, date picker
+  - `displayActionItems()` renders action items with auto-resizing textareas
+  - `getSelectedActionItems()` returns `[{text, dueDate}]` for checked items
+- **Apple Notes** (`apple-notes.js`):
+  - Action items saved with visual checkbox symbols (☐)
+  - Due dates displayed in "Month Day, Year" format
+  - Appears in "Action Items" section after Key Learnings
+- **Apple Reminders** (`apple-reminders.js` - NEW FILE):
+  - `createReminders()` - Main entry point for batch reminder creation
+  - `ensureRemindersList()` - Creates list if it doesn't exist (same name as Notes folder)
+  - `createReminder()` - Creates individual reminder with due date
+  - Reminder body includes video title and URL for context
+  - Graceful error handling - Notes save succeeds even if Reminders fails
+- **Native Host** (`host.js`):
+  - `handleSaveToNotes()` updated to save to both Notes and Reminders
+  - Returns `remindersCreated` count in response
+  - Success message shows "Created note and X reminders"
+- **CSS Styling** (`styles.css`):
+  - `.action-items` container with settings dropdown
+  - `.action-item` with checkbox, content, and due date picker
+  - Consistent with existing key learnings styling
+
 ---
 
 ## Architecture Overview
@@ -268,13 +302,14 @@ sidebar.js (updateProgressUI)
 
 ### Key Files Modified
 - `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding, description/link extraction
-- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane, multi-export UI
-- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality, export handlers (clipboard, download), native host check
-- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting, light/dark mode theming, export button styles
+- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane, multi-export UI, action items section
+- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality, export handlers (clipboard, download), native host check, action items display/save
+- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting, light/dark mode theming, export button styles, action items styling
 - `extension/background.js` - Progress callback routing
-- `native-host/host.js` - Progress message sending, description/links pass-through
-- `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing
-- `native-host/apple-notes.js` - listFolders(), relevant links in saved notes
+- `native-host/host.js` - Progress message sending, description/links pass-through, Apple Reminders integration
+- `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing, ACTION ITEMS section
+- `native-host/apple-notes.js` - listFolders(), relevant links in saved notes, action items with checkbox symbols
+- `native-host/apple-reminders.js` - NEW: Apple Reminders integration via AppleScript
 - `install.sh` - Improved installer with colored output, Claude CLI detection, auto-detection
 
 ### Storage

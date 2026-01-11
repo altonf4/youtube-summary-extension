@@ -310,6 +310,7 @@ async function handleGenerateSummary() {
     if (response.success) {
       currentSummary = response;
       displaySummary(response.summary, response.keyLearnings, response.relevantLinks || []);
+      displayActionItems(response.actionItems || []);
       showSection(summarySection);
       // Notify parent that analysis completed
       window.parent.postMessage({ type: 'ANALYSIS_COMPLETE' }, '*');
@@ -422,6 +423,131 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
     searchableTranscript.textContent = cachedTranscript;
     searchableTranscript.dataset.populated = 'true';
   }
+}
+
+/**
+ * Display action items with checkboxes and due date pickers
+ * @param {string[]} actionItems - Array of action item strings
+ */
+function displayActionItems(actionItems) {
+  const actionSection = document.getElementById('action-items-section');
+  const actionList = document.getElementById('action-items-list');
+
+  if (!actionSection || !actionList) return;
+
+  if (!actionItems || actionItems.length === 0) {
+    actionSection.style.display = 'none';
+    return;
+  }
+
+  actionSection.style.display = 'block';
+  actionList.innerHTML = '';
+
+  // Get default due date from dropdown
+  const defaultDueDays = parseInt(document.getElementById('default-due-days').value, 10) || 7;
+  const defaultDueDate = new Date();
+  defaultDueDate.setDate(defaultDueDate.getDate() + defaultDueDays);
+
+  actionItems.forEach((item, index) => {
+    const actionEl = document.createElement('div');
+    actionEl.className = 'action-item';
+
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `action-${index}`;
+    checkbox.checked = true;
+
+    // Create content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'action-content';
+
+    // Create textarea for action text
+    const textArea = document.createElement('textarea');
+    textArea.className = 'action-text';
+    textArea.id = `action-text-${index}`;
+    textArea.value = item;
+    textArea.rows = 1;
+
+    // Auto-resize textarea
+    textArea.addEventListener('input', () => {
+      textArea.style.height = 'auto';
+      textArea.style.height = textArea.scrollHeight + 'px';
+    });
+
+    // Create due date container
+    const dueDiv = document.createElement('div');
+    dueDiv.className = 'action-due';
+
+    const dueLabel = document.createElement('label');
+    dueLabel.textContent = 'Due:';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.id = `action-due-${index}`;
+    dateInput.value = formatDateForInput(defaultDueDate);
+
+    dueDiv.appendChild(dueLabel);
+    dueDiv.appendChild(dateInput);
+
+    contentDiv.appendChild(textArea);
+    contentDiv.appendChild(dueDiv);
+
+    actionEl.appendChild(checkbox);
+    actionEl.appendChild(contentDiv);
+    actionList.appendChild(actionEl);
+
+    // Trigger initial resize
+    setTimeout(() => {
+      textArea.style.height = 'auto';
+      textArea.style.height = textArea.scrollHeight + 'px';
+    }, 0);
+  });
+
+  // Update default due dates when dropdown changes
+  document.getElementById('default-due-days').addEventListener('change', (e) => {
+    const days = parseInt(e.target.value, 10);
+    const newDefaultDate = new Date();
+    newDefaultDate.setDate(newDefaultDate.getDate() + days);
+
+    // Update all date inputs that still have the old default
+    document.querySelectorAll('.action-item input[type="date"]').forEach(input => {
+      input.value = formatDateForInput(newDefaultDate);
+    });
+  });
+}
+
+/**
+ * Format date for HTML date input (YYYY-MM-DD)
+ * @param {Date} date - Date object
+ * @returns {string} - Formatted date string
+ */
+function formatDateForInput(date) {
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Get selected action items with their due dates
+ * @returns {Array<{text: string, dueDate: string|null}>} - Array of action items
+ */
+function getSelectedActionItems() {
+  const items = [];
+  const actionElements = document.querySelectorAll('.action-item');
+
+  actionElements.forEach((el) => {
+    const checkbox = el.querySelector('input[type="checkbox"]');
+    const textArea = el.querySelector('.action-text');
+    const dueDateInput = el.querySelector('input[type="date"]');
+
+    if (checkbox && checkbox.checked && textArea && textArea.value.trim()) {
+      items.push({
+        text: textArea.value.trim(),
+        dueDate: dueDateInput ? dueDateInput.value || null : null
+      });
+    }
+  });
+
+  return items;
 }
 
 // Initialize rich text editor
@@ -719,8 +845,11 @@ async function handleSaveToNotes() {
   // Get selected links
   const linksToSave = getSelectedLinks();
 
-  if (learningsToSave.length === 0 && !customNotes && linksToSave.length === 0) {
-    showError('Please select at least one key learning, link, or add custom notes');
+  // Get selected action items
+  const actionItemsToSave = getSelectedActionItems();
+
+  if (learningsToSave.length === 0 && !customNotes && linksToSave.length === 0 && actionItemsToSave.length === 0) {
+    showError('Please select at least one key learning, action item, link, or add custom notes');
     return;
   }
 
@@ -739,6 +868,7 @@ async function handleSaveToNotes() {
       summary: editedSummary || currentSummary.summary,
       keyLearnings: learningsToSave,
       relevantLinks: linksToSave,
+      actionItems: actionItemsToSave,
       customNotes: customNotes,
       noteId: currentNoteId // Send cached note ID if we have one
     });
@@ -752,8 +882,11 @@ async function handleSaveToNotes() {
 
       // Show success with created/updated status
       const action = response.created ? 'Created new note' : 'Updated existing note';
-      document.getElementById('success-details').textContent =
-        `${action} in "${folderName}" folder`;
+      let details = `${action} in "${folderName}" folder`;
+      if (response.remindersCreated > 0) {
+        details += ` and created ${response.remindersCreated} reminder${response.remindersCreated > 1 ? 's' : ''}`;
+      }
+      document.getElementById('success-details').textContent = details;
 
       // Update success header based on action
       const successHeader = document.querySelector('.success-message h3');

@@ -43,7 +43,7 @@ async function generateSummary(videoTitle, transcript, description = '', descrip
     // Parse the response
     onProgress({ stage: 'parsing', message: 'Extracting insights...' });
     const parsed = parseResponse(response, descriptionLinks);
-    log(`Parsed summary: ${parsed.summary.length} chars, ${parsed.keyLearnings.length} learnings, ${parsed.relevantLinks.length} links`);
+    log(`Parsed summary: ${parsed.summary.length} chars, ${parsed.keyLearnings.length} learnings, ${parsed.actionItems.length} action items, ${parsed.relevantLinks.length} links`);
 
     onProgress({ stage: 'complete', message: 'Done!' });
 
@@ -51,6 +51,7 @@ async function generateSummary(videoTitle, transcript, description = '', descrip
       success: true,
       summary: parsed.summary,
       keyLearnings: parsed.keyLearnings,
+      actionItems: parsed.actionItems,
       relevantLinks: parsed.relevantLinks
     };
 
@@ -157,6 +158,12 @@ KEY LEARNINGS:
 - [Second key learning or takeaway]
 - [Third key learning or takeaway]
 - [Continue with more learnings as appropriate]
+
+ACTION ITEMS:
+- [Specific actionable task the viewer should do - start with a verb like "Try", "Implement", "Research", etc.]
+- [Another concrete next step with clear deliverable]
+- [Continue with 3-5 action items maximum]
+(Each action item should be a specific, concrete task that someone can actually do - not a general concept. If no clear action items can be derived from the video, write "No specific action items identified")
 ${hasCreatorComments ? `
 CREATOR ADDITIONS:
 [If the video creator added valuable information in their comments that wasn't in the transcript, list those separately here. If their comments just thanked viewers or were not substantive, write "No additional insights from creator comments"]
@@ -169,7 +176,7 @@ RELEVANT LINKS:
 - 2. [Why this link is useful]
 (If no links were provided in the description, write "No links provided")
 
-Always include SUMMARY:, KEY LEARNINGS:, and RELEVANT LINKS: sections with the exact headers shown above.${hasCreatorComments ? ' Include CREATOR ADDITIONS: section only if creator comments contained valuable additional information.' : ''}`;
+Always include SUMMARY:, KEY LEARNINGS:, ACTION ITEMS:, and RELEVANT LINKS: sections with the exact headers shown above.${hasCreatorComments ? ' Include CREATOR ADDITIONS: section only if creator comments contained valuable additional information.' : ''}`;
 }
 
 /**
@@ -293,8 +300,8 @@ function parseResponse(response, descriptionLinks = []) {
     ? summaryMatch[1].trim()
     : cleaned.substring(0, 500); // Fallback
 
-  // Extract key learnings (stop at CREATOR ADDITIONS or RELEVANT LINKS)
-  const learningsMatch = cleaned.match(/KEY LEARNINGS:\s*([\s\S]*?)(?=CREATOR ADDITIONS:|RELEVANT LINKS:|$)/i);
+  // Extract key learnings (stop at ACTION ITEMS, CREATOR ADDITIONS or RELEVANT LINKS)
+  const learningsMatch = cleaned.match(/KEY LEARNINGS:\s*([\s\S]*?)(?=ACTION ITEMS:|CREATOR ADDITIONS:|RELEVANT LINKS:|$)/i);
   let keyLearnings = [];
 
   if (learningsMatch) {
@@ -305,6 +312,26 @@ function parseResponse(response, descriptionLinks = []) {
       .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
       .map(line => line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, ''))
       .filter(line => line.length > 0);
+  }
+
+  // Extract action items (stop at CREATOR ADDITIONS or RELEVANT LINKS)
+  const actionItemsMatch = cleaned.match(/ACTION ITEMS:\s*([\s\S]*?)(?=CREATOR ADDITIONS:|RELEVANT LINKS:|$)/i);
+  let actionItems = [];
+
+  if (actionItemsMatch) {
+    const actionText = actionItemsMatch[1].trim();
+    // Check if Claude said there were no action items
+    const skipPhrases = ['no specific', 'no action', 'none identified', 'n/a', 'no clear'];
+    const shouldSkip = skipPhrases.some(phrase => actionText.toLowerCase().includes(phrase));
+
+    if (!shouldSkip) {
+      actionItems = actionText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
+        .map(line => line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, ''))
+        .filter(line => line.length > 0);
+    }
   }
 
   // Extract creator additions (if present)
@@ -386,6 +413,7 @@ function parseResponse(response, descriptionLinks = []) {
   return {
     summary: summary || 'Summary could not be generated.',
     keyLearnings,
+    actionItems,
     relevantLinks
   };
 }
