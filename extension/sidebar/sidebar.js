@@ -469,10 +469,10 @@ function displayActionItems(actionItems) {
     textArea.value = item;
     textArea.rows = 2; // Start with 2 rows minimum
 
-    // Auto-resize textarea to fit content
+    // Auto-resize textarea to fit content (same as key learnings)
     const autoResize = () => {
       textArea.style.height = 'auto';
-      textArea.style.height = Math.max(textArea.scrollHeight, 48) + 'px'; // Min 48px (~2 lines)
+      textArea.style.height = textArea.scrollHeight + 'px';
     };
     textArea.addEventListener('input', autoResize);
 

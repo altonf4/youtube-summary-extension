@@ -633,11 +633,10 @@ header h1::before {
   border: none;
   background: transparent;
   padding: 0;
-  min-height: 3em;
+  min-height: 4.5em;
   outline: none;
-  resize: vertical;
+  resize: none;
   font-family: inherit;
-  overflow-y: hidden;
 }
 
 .action-text:focus {
