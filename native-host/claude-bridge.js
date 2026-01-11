@@ -6,6 +6,7 @@
 const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
+const logger = require('./logger');
 
 /**
  * Generate summary using Claude Code CLI
@@ -20,13 +21,7 @@ const path = require('path');
  * @returns {Promise<Object>} - Summary, key learnings, and relevant links
  */
 async function generateSummary(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null, onProgress = () => {}) {
-  const fs = require('fs');
-  const logFile = require('path').join(process.env.HOME, '.youtube-summary-extension.log');
-
-  const log = (msg) => {
-    const timestamp = new Date().toISOString();
-    fs.appendFileSync(logFile, `[${timestamp}] [claude-bridge] ${msg}\n`);
-  };
+  const log = (msg) => logger.log(msg, 'claude-bridge');
 
   try {
     onProgress({ stage: 'preparing', message: 'Preparing transcript...' });
@@ -404,13 +399,7 @@ function parseResponse(response, descriptionLinks = []) {
  * @returns {Promise<Object>} - Additional learnings
  */
 async function generateFollowUp(videoTitle, transcript, query, existingLearnings = []) {
-  const fs = require('fs');
-  const logFile = require('path').join(process.env.HOME, '.youtube-summary-extension.log');
-
-  const log = (msg) => {
-    const timestamp = new Date().toISOString();
-    fs.appendFileSync(logFile, `[${timestamp}] [claude-bridge:followup] ${msg}\n`);
-  };
+  const log = (msg) => logger.log(msg, 'claude-bridge:followup');
 
   try {
     // Create follow-up prompt

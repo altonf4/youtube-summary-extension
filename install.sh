@@ -269,7 +269,7 @@ if [ $ERRORS -eq 0 ]; then
     fi
     echo -e "  ${GREEN}✓${NC} Save to Apple Notes (macOS)"
     echo ""
-    echo "Logs: ~/.youtube-summary-extension.log"
+    echo "Logs: $SCRIPT_DIR/native-host/extension.log"
 else
     echo -e "${RED}Installation completed with $ERRORS error(s).${NC}"
     echo "Please fix the issues above and try again."

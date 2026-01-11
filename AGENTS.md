@@ -216,7 +216,7 @@ Edit `claude-bridge.js`:
 
 1. Check extension console: Right-click extension icon → Inspect
 2. Check YouTube page console: DevTools on YouTube tab
-3. Check native host logs: `tail -f ~/.youtube-summary-extension.log`
+3. Check native host logs: `tail -f native-host/extension.log`
 
 ## Development Guidelines (Required Practices)
 

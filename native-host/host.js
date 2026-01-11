@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const claudeBridge = require('./claude-bridge');
 const appleNotes = require('./apple-notes');
+const logger = require('./logger');
 
 // Native messaging protocol uses length-prefixed messages
 // Message format: [4 bytes: message length][message in JSON]
@@ -272,9 +273,7 @@ function sendResponse(response) {
 
 // Debug logging to file (since stdout is used for messaging)
 function logDebug(message) {
-  const logFile = path.join(process.env.HOME, '.youtube-summary-extension.log');
-  const timestamp = new Date().toISOString();
-  fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`);
+  logger.log(message);
 }
 
 // Log startup

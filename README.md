@@ -232,7 +232,7 @@ youtube-summary-extension/
 
 View debug logs:
 ```bash
-tail -f ~/.youtube-summary-extension.log
+tail -f native-host/extension.log
 ```
 
 ## Limitations
@@ -273,4 +273,4 @@ Built with:
 
 **Questions or Issues?**
 
-Check the logs at `~/.youtube-summary-extension.log` for debugging information.
+Check the logs at `native-host/extension.log` for debugging information.

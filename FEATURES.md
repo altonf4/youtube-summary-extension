@@ -207,6 +207,20 @@ This document tracks all feature requests and implementations for the YouTube Su
   - Non-blocking if Claude not found (warns but continues)
   - Extension ID format validation
 
+### 14. Centralized Logging with Auto-Rotation
+**Request:** Move logs from home directory to native-host directory and ensure log file never exceeds 1MB.
+
+**Implementation:**
+- **New Logger Module** (`native-host/logger.js`):
+  - Centralized logging utility used by all native host modules
+  - Log file location: `native-host/extension.log` (instead of `~/.youtube-summary-extension.log`)
+  - Auto-rotation: When log exceeds 1MB, truncates to keep last half of entries
+  - Supports optional prefix for categorizing log sources (e.g., `[claude-bridge]`)
+- **Files Updated**:
+  - `host.js` - Uses `logger.log()` instead of inline `fs.appendFileSync`
+  - `claude-bridge.js` - Uses `logger.log(msg, 'claude-bridge')` for both `generateSummary` and `generateFollowUp`
+  - Documentation updated in `install.sh`, `AGENTS.md`, `README.md`
+
 ---
 
 ## Architecture Overview
