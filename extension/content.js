@@ -78,25 +78,20 @@ async function extractTopComments(maxComments = 20) {
   const viewerComments = [];
 
   try {
-    // Check if comments are loaded
+    // Check if comments are loaded - only extract if user has already scrolled to them
+    // We do NOT scroll to load comments as it disrupts user experience
     let commentSection = document.querySelector('ytd-comments#comments');
     if (!commentSection) {
-      // Comments section doesn't exist, might need to scroll to load
       return { creatorComments: [], viewerComments: [] };
     }
 
-    // Scroll to load comments if not visible
-    const commentsHeader = document.querySelector('#comments #header');
-    if (commentsHeader) {
-      commentsHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(1500); // Wait for comments to load
-    }
-
-    // Wait for at least some comments to appear
-    await waitForElement('ytd-comment-thread-renderer', 5000).catch(() => null);
-
-    // Get all comment threads
+    // Only extract comments that are already loaded (no scrolling)
+    // If user hasn't scrolled down, comments won't be loaded and that's okay
     const commentThreads = document.querySelectorAll('ytd-comment-thread-renderer');
+    if (commentThreads.length === 0) {
+      // Comments not loaded yet (user hasn't scrolled down) - skip
+      return { creatorComments: [], viewerComments: [] };
+    }
 
     commentThreads.forEach(thread => {
       try {
@@ -764,6 +759,25 @@ const urlObserver = new MutationObserver(() => {
   }
 });
 
+// YouTube-specific navigation events (more reliable than MutationObserver for SPA)
+// These fire when YouTube completes its client-side navigation
+document.addEventListener('yt-navigate-finish', () => {
+  const url = location.href;
+  if (url !== lastUrl) {
+    lastUrl = url;
+    onUrlChange();
+  }
+});
+
+// Also listen for popstate (back/forward navigation)
+window.addEventListener('popstate', () => {
+  const url = location.href;
+  if (url !== lastUrl) {
+    lastUrl = url;
+    onUrlChange();
+  }
+});
+
 function onUrlChange() {
   const videoId = getVideoId();
 
@@ -962,48 +976,81 @@ async function extractTranscript() {
 
 // Open the transcript panel
 async function openTranscriptPanel() {
-  // First, expand the description if needed
-  const moreButton = document.querySelector('#expand, tp-yt-paper-button#expand');
-  if (moreButton) {
-    moreButton.click();
-    await sleep(500);
-  }
+  // Lock scrolling entirely to prevent any scroll during transcript extraction
+  const scrollY = window.scrollY;
+  const originalHtmlOverflow = document.documentElement.style.overflow;
+  const originalBodyOverflow = document.body.style.overflow;
+  const originalHtmlPosition = document.documentElement.style.position;
+  const originalHtmlTop = document.documentElement.style.top;
+  const originalHtmlWidth = document.documentElement.style.width;
 
-  // Look for "Show transcript" button
-  const showTranscriptButton = findShowTranscriptButton();
+  // Lock the page in place
+  document.documentElement.style.position = 'fixed';
+  document.documentElement.style.top = `-${scrollY}px`;
+  document.documentElement.style.width = '100%';
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
 
-  if (showTranscriptButton) {
-    showTranscriptButton.click();
-    await sleep(1000);
-    return;
-  }
+  const unlockScroll = () => {
+    document.documentElement.style.position = originalHtmlPosition;
+    document.documentElement.style.top = originalHtmlTop;
+    document.documentElement.style.width = originalHtmlWidth;
+    document.documentElement.style.overflow = originalHtmlOverflow;
+    document.body.style.overflow = originalBodyOverflow;
+    window.scrollTo(0, scrollY);
+  };
 
-  // Alternative: Try the engagement panel button in the actions bar
-  const transcriptButtonAlt = document.querySelector('button[aria-label*="transcript" i], button[aria-label*="Transcript" i]');
-  if (transcriptButtonAlt) {
-    transcriptButtonAlt.click();
-    await sleep(1000);
-    return;
-  }
+  try {
+    // First, expand the description if needed
+    const moreButton = document.querySelector('#expand, tp-yt-paper-button#expand');
+    if (moreButton) {
+      moreButton.click();
+      await sleep(500);
+    }
 
-  // Try clicking the ... menu and looking for transcript option
-  const menuButton = document.querySelector('#button-shape button, ytd-menu-renderer yt-button-shape button');
-  if (menuButton) {
-    menuButton.click();
-    await sleep(500);
+    // Look for "Show transcript" button
+    const showTranscriptButton = findShowTranscriptButton();
 
-    // Look for transcript option in menu
-    const menuItems = document.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
-    for (const item of menuItems) {
-      if (item.textContent.toLowerCase().includes('transcript')) {
-        item.click();
-        await sleep(1000);
-        return;
+    if (showTranscriptButton) {
+      showTranscriptButton.click();
+      await sleep(1000);
+      unlockScroll();
+      return;
+    }
+
+    // Alternative: Try the engagement panel button in the actions bar
+    const transcriptButtonAlt = document.querySelector('button[aria-label*="transcript" i], button[aria-label*="Transcript" i]');
+    if (transcriptButtonAlt) {
+      transcriptButtonAlt.click();
+      await sleep(1000);
+      unlockScroll();
+      return;
+    }
+
+    // Try clicking the ... menu and looking for transcript option
+    const menuButton = document.querySelector('#button-shape button, ytd-menu-renderer yt-button-shape button');
+    if (menuButton) {
+      menuButton.click();
+      await sleep(500);
+
+      // Look for transcript option in menu
+      const menuItems = document.querySelectorAll('ytd-menu-service-item-renderer, tp-yt-paper-item');
+      for (const item of menuItems) {
+        if (item.textContent.toLowerCase().includes('transcript')) {
+          item.click();
+          await sleep(1000);
+          unlockScroll();
+          return;
+        }
       }
     }
-  }
 
-  throw new Error('Could not find "Show transcript" button. Please manually click "Show transcript" under the video description.');
+    unlockScroll();
+    throw new Error('Could not find "Show transcript" button. Please manually click "Show transcript" under the video description.');
+  } catch (error) {
+    unlockScroll();
+    throw error;
+  }
 }
 
 // Find the "Show transcript" button
