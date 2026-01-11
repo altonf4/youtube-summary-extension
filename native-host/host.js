@@ -161,7 +161,7 @@ async function handleGenerateSummary(message) {
 
 // Handle save to Apple Notes action
 async function handleSaveToNotes(message) {
-  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, actionItems, customNotes, noteId } = message;
+  const { folder, videoTitle, videoUrl, summary, keyLearnings, relevantLinks, actionItems, customNotes, noteId, reminderIds } = message;
 
   if (!folder || !videoTitle || !summary) {
     return {
@@ -189,21 +189,25 @@ async function handleSaveToNotes(message) {
     const action = noteResult.created ? 'Created' : 'Updated';
     logDebug(`${action} note in Apple Notes successfully (noteId: ${noteResult.noteId})`);
 
-    // Create reminders if action items exist
-    let remindersResult = { success: true, count: 0 };
-    if (actionItems && actionItems.length > 0) {
-      logDebug(`Creating ${actionItems.length} reminders in Apple Reminders...`);
+    // Create/update reminders if action items exist (or delete old ones if no items)
+    let remindersResult = { success: true, count: 0, reminderIds: [] };
+    const hasExistingReminders = reminderIds && reminderIds.length > 0;
+    const hasActionItems = actionItems && actionItems.length > 0;
+
+    if (hasActionItems || hasExistingReminders) {
+      logDebug(`Managing reminders: ${hasExistingReminders ? `deleting ${reminderIds.length} old, ` : ''}creating ${actionItems?.length || 0} new`);
       try {
         remindersResult = await appleReminders.createReminders({
           listName: folder,  // Use same folder name for reminders list
           videoTitle,
           videoUrl,
-          actionItems
+          actionItems: actionItems || [],
+          existingReminderIds: reminderIds || []
         });
-        logDebug(`Created ${remindersResult.count} reminders successfully`);
+        logDebug(`Reminders updated: ${remindersResult.count} created`);
       } catch (reminderError) {
         // Don't fail the whole operation if reminders fail
-        logDebug(`Warning: Failed to create reminders: ${reminderError.message}`);
+        logDebug(`Warning: Failed to manage reminders: ${reminderError.message}`);
       }
     }
 
@@ -212,7 +216,8 @@ async function handleSaveToNotes(message) {
       created: noteResult.created,
       noteId: noteResult.noteId,
       remindersCreated: remindersResult.count,
-      message: `${action} note in "${folder}"${remindersResult.count > 0 ? ` and created ${remindersResult.count} reminder${remindersResult.count > 1 ? 's' : ''}` : ''}`
+      reminderIds: remindersResult.reminderIds || [],
+      message: `${action} note in "${folder}"${remindersResult.count > 0 ? ` and ${hasExistingReminders ? 'updated' : 'created'} ${remindersResult.count} reminder${remindersResult.count > 1 ? 's' : ''}` : ''}`
     };
 
   } catch (error) {

@@ -14,32 +14,62 @@ const execAsync = promisify(exec);
  * @param {string} options.videoTitle - Video title for context
  * @param {string} options.videoUrl - Video URL for reminder body
  * @param {Array<{text: string, dueDate: string|null}>} options.actionItems - Action items to create
- * @returns {Promise<{success: boolean, count: number}>}
+ * @param {Array<string>} options.existingReminderIds - IDs of previously created reminders to delete first
+ * @returns {Promise<{success: boolean, count: number, reminderIds: string[]}>}
  */
-async function createReminders({ listName, videoTitle, videoUrl, actionItems }) {
+async function createReminders({ listName, videoTitle, videoUrl, actionItems, existingReminderIds = [] }) {
+  // Delete existing reminders first if we have cached IDs
+  if (existingReminderIds && existingReminderIds.length > 0) {
+    await deleteReminders(existingReminderIds);
+  }
+
   if (!actionItems || actionItems.length === 0) {
-    return { success: true, count: 0 };
+    return { success: true, count: 0, reminderIds: [] };
   }
 
   try {
     // Ensure list exists
     await ensureRemindersList(listName);
 
-    // Create each reminder
-    let createdCount = 0;
+    // Create each reminder and collect IDs
+    const reminderIds = [];
     for (const item of actionItems) {
-      await createReminder({
+      const reminderId = await createReminder({
         listName,
         title: item.text,
         notes: `From video: ${videoTitle}\n${videoUrl}`,
         dueDate: item.dueDate
       });
-      createdCount++;
+      if (reminderId) {
+        reminderIds.push(reminderId);
+      }
     }
 
-    return { success: true, count: createdCount };
+    return { success: true, count: reminderIds.length, reminderIds };
   } catch (error) {
     throw new Error(`Failed to create reminders: ${error.message}`);
+  }
+}
+
+/**
+ * Delete reminders by their IDs
+ * @param {string[]} reminderIds - Array of reminder IDs to delete
+ */
+async function deleteReminders(reminderIds) {
+  if (!reminderIds || reminderIds.length === 0) return;
+
+  for (const reminderId of reminderIds) {
+    try {
+      const script = `
+tell application "Reminders"
+  try
+    delete (first reminder whose id is "${escapeForAppleScript(reminderId)}")
+  end try
+end tell`;
+      await runAppleScript(script);
+    } catch (error) {
+      // Ignore errors for individual deletions (reminder may already be deleted)
+    }
   }
 }
 
@@ -74,6 +104,7 @@ end tell`;
  * @param {string} options.title - Reminder title
  * @param {string} options.notes - Reminder notes/body
  * @param {string|null} options.dueDate - ISO date string (YYYY-MM-DD) or null
+ * @returns {Promise<string|null>} Reminder ID or null
  */
 async function createReminder({ listName, title, notes, dueDate }) {
   const escapedListName = escapeForAppleScript(listName);
@@ -90,11 +121,13 @@ async function createReminder({ listName, title, notes, dueDate }) {
   const script = `
 tell application "Reminders"
   tell list "${escapedListName}"
-    make new reminder with properties {name:"${escapedTitle}", body:"${escapedNotes}"${dueDateProperty}}
+    set newReminder to make new reminder with properties {name:"${escapedTitle}", body:"${escapedNotes}"${dueDateProperty}}
+    return id of newReminder
   end tell
 end tell`;
 
-  await runAppleScript(script);
+  const result = await runAppleScript(script);
+  return result || null;
 }
 
 /**

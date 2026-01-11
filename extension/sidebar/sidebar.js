@@ -4,6 +4,7 @@ let currentVideoInfo = null;
 let currentSummary = null;
 let selectedLearnings = new Set();
 let currentNoteId = null; // Cached note ID for updating existing notes
+let currentReminderIds = []; // Cached reminder IDs for updating existing reminders
 let cachedTranscript = null; // Store transcript for search functionality
 let cachedCreatorComments = []; // Store creator comments (high value)
 let cachedViewerComments = []; // Store top viewer comments
@@ -868,12 +869,17 @@ async function handleSaveToNotes() {
       relevantLinks: linksToSave,
       actionItems: actionItemsToSave,
       customNotes: customNotes,
-      noteId: currentNoteId // Send cached note ID if we have one
+      noteId: currentNoteId, // Send cached note ID if we have one
+      reminderIds: currentReminderIds // Send cached reminder IDs for updates
     });
 
     if (response.success) {
-      // Cache the note ID for future updates
+      // Check if we had existing reminders (before updating cache)
+      const hadExistingReminders = currentReminderIds.length > 0;
+
+      // Cache the note ID and reminder IDs for future updates
       currentNoteId = response.noteId;
+      currentReminderIds = response.reminderIds || [];
 
       // Save folder to suggestions
       saveFolderSuggestion(folderName);
@@ -882,7 +888,8 @@ async function handleSaveToNotes() {
       const action = response.created ? 'Created new note' : 'Updated existing note';
       let details = `${action} in "${folderName}" folder`;
       if (response.remindersCreated > 0) {
-        details += ` and created ${response.remindersCreated} reminder${response.remindersCreated > 1 ? 's' : ''}`;
+        const reminderAction = hadExistingReminders ? 'updated' : 'created';
+        details += ` and ${reminderAction} ${response.remindersCreated} reminder${response.remindersCreated > 1 ? 's' : ''}`;
       }
       document.getElementById('success-details').textContent = details;
 
@@ -942,6 +949,7 @@ function handleRetry() {
 function handleNewSummary() {
   currentSummary = null;
   currentNoteId = null; // Reset note ID for new summary
+  currentReminderIds = []; // Reset reminder IDs for new summary
   selectedLearnings.clear();
   showSection(generateSection);
   // Notify parent to reset floating button state
