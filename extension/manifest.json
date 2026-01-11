@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Summary with Claude",
+  "version": "1.0.0",
+  "description": "Generate AI summaries of YouTube videos and save key learnings to Apple Notes",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*"],
+      "js": ["content.js"],
+      "css": ["sidebar/styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["sidebar/sidebar.html", "sidebar/sidebar.js", "sidebar/styles.css", "settings/settings.html", "settings/settings.css", "settings/settings.js"],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ],
+  "options_ui": {
+    "page": "settings/settings.html",
+    "open_in_tab": true
+  }
+}

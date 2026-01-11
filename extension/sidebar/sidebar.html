@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Summary</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="sidebar-container">
+    <header>
+      <div class="header-top">
+        <h1>AI Summary</h1>
+        <div class="header-actions">
+          <button id="settings-btn" class="icon-btn" title="Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+          <button id="close-btn" class="icon-btn" title="Close sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <p class="video-title" id="video-title">Loading...</p>
+    </header>
+
+    <div class="content">
+      <!-- Generate Summary Section -->
+      <div class="section" id="generate-section">
+        <button id="generate-btn" class="primary-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          Generate Summary
+        </button>
+      </div>
+
+      <!-- Loading State -->
+      <div class="section loading-section" id="loading-section" style="display: none;">
+        <div class="progress-container">
+          <div class="progress-stages">
+            <div class="progress-stage" data-stage="preparing">
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+              </div>
+              <span class="stage-label">Preparing transcript</span>
+            </div>
+            <div class="progress-stage" data-stage="sending">
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"></line>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+              </div>
+              <span class="stage-label">Sending to Claude</span>
+            </div>
+            <div class="progress-stage" data-stage="waiting">
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <span class="stage-label">Claude is thinking...</span>
+            </div>
+            <div class="progress-stage" data-stage="streaming">
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                </svg>
+              </div>
+              <span class="stage-label">Receiving response</span>
+              <span class="stage-detail" id="streaming-chars"></span>
+            </div>
+            <div class="progress-stage" data-stage="parsing">
+              <div class="stage-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                  <polyline points="2 17 12 22 22 17"></polyline>
+                  <polyline points="2 12 12 17 22 12"></polyline>
+                </svg>
+              </div>
+              <span class="stage-label">Extracting insights</span>
+            </div>
+          </div>
+          <p class="progress-message" id="progress-message">Starting...</p>
+        </div>
+      </div>
+
+      <!-- Summary Display -->
+      <div class="section" id="summary-section" style="display: none;">
+        <div class="summary-content">
+          <h2>Summary</h2>
+          <div id="summary-text" class="summary-text"></div>
+        </div>
+
+        <div class="key-learnings">
+          <h2>Key Learnings <span class="edit-hint">(click to edit)</span></h2>
+          <div id="key-learnings-list" class="learnings-list"></div>
+        </div>
+
+        <!-- Custom Notes Section -->
+        <div class="custom-notes-section">
+          <h2>Your Notes</h2>
+          <div class="rich-editor">
+            <div class="editor-toolbar">
+              <button type="button" data-command="bold" title="Bold (Ctrl+B)">
+                <strong>B</strong>
+              </button>
+              <button type="button" data-command="italic" title="Italic (Ctrl+I)">
+                <em>I</em>
+              </button>
+              <button type="button" data-command="underline" title="Underline (Ctrl+U)">
+                <u>U</u>
+              </button>
+              <span class="toolbar-divider"></span>
+              <button type="button" data-command="insertUnorderedList" title="Bullet List">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="4" cy="6" r="2"/><circle cx="4" cy="12" r="2"/><circle cx="4" cy="18" r="2"/>
+                  <rect x="8" y="5" width="14" height="2"/><rect x="8" y="11" width="14" height="2"/><rect x="8" y="17" width="14" height="2"/>
+                </svg>
+              </button>
+              <button type="button" data-command="insertOrderedList" title="Numbered List">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <text x="2" y="8" font-size="6">1</text><text x="2" y="14" font-size="6">2</text><text x="2" y="20" font-size="6">3</text>
+                  <rect x="8" y="5" width="14" height="2"/><rect x="8" y="11" width="14" height="2"/><rect x="8" y="17" width="14" height="2"/>
+                </svg>
+              </button>
+              <span class="toolbar-divider"></span>
+              <button type="button" data-command="removeFormat" title="Clear Formatting">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="4" y1="4" x2="20" y2="20"/><path d="M6 12h8M10 6v12"/>
+                </svg>
+              </button>
+            </div>
+            <div
+              id="custom-notes-editor"
+              class="editor-content"
+              contenteditable="true"
+              placeholder="Add your own thoughts, insights, or action items..."
+            ></div>
+          </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="export-section">
+          <h3>Save to Apple Notes</h3>
+          <div class="folder-selector">
+            <label for="folder-select">Folder:</label>
+            <input
+              type="text"
+              id="folder-input"
+              placeholder="e.g., Tech, Education, Business"
+              list="folder-suggestions"
+            />
+            <datalist id="folder-suggestions"></datalist>
+          </div>
+          <button id="save-btn" class="primary-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Save to Apple Notes
+          </button>
+        </div>
+      </div>
+
+      <!-- Success Message -->
+      <div class="section success-section" id="success-section" style="display: none;">
+        <div class="success-message">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <h3>Saved to Apple Notes!</h3>
+          <p id="success-details"></p>
+          <div class="success-actions">
+            <button id="back-to-edit-btn" class="secondary-btn">Back to Edit</button>
+            <button id="new-summary-btn" class="secondary-btn">Generate Another</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Error Message -->
+      <div class="section error-section" id="error-section" style="display: none;">
+        <div class="error-message">
+          <p id="error-text"></p>
+          <button id="retry-btn" class="secondary-btn">Try Again</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <p class="powered-by">Powered by Claude Code</p>
+    </footer>
+  </div>
+
+  <script src="sidebar.js"></script>
+</body>
+</html>

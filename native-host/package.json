@@ -1,0 +1,21 @@
+{
+  "name": "youtube-summary-native-host",
+  "version": "1.0.0",
+  "description": "Native messaging host for YouTube Summary Extension",
+  "main": "host.js",
+  "scripts": {
+    "test": "node host.js"
+  },
+  "keywords": [
+    "youtube",
+    "summary",
+    "claude",
+    "native-messaging"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "bin": {
+    "youtube-summary-host": "./host.js"
+  }
+}

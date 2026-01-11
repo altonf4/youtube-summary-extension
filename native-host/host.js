@@ -1,0 +1,233 @@
+#!/usr/bin/env node
+
+/**
+ * Native Messaging Host for YouTube Summary Extension
+ * Communicates with Chrome extension via stdin/stdout
+ */
+
+const fs = require('fs');
+const path = require('path');
+const claudeBridge = require('./claude-bridge');
+const appleNotes = require('./apple-notes');
+
+// Native messaging protocol uses length-prefixed messages
+// Message format: [4 bytes: message length][message in JSON]
+
+let messageBuffer = Buffer.alloc(0);
+let messageLength = null;
+
+// Read from stdin
+process.stdin.on('data', (chunk) => {
+  messageBuffer = Buffer.concat([messageBuffer, chunk]);
+  processMessages();
+});
+
+process.stdin.on('end', () => {
+  process.exit(0);
+});
+
+// Process messages from buffer
+function processMessages() {
+  while (true) {
+    // Read message length (first 4 bytes)
+    if (messageLength === null && messageBuffer.length >= 4) {
+      messageLength = messageBuffer.readUInt32LE(0);
+      messageBuffer = messageBuffer.slice(4);
+    }
+
+    // Read message body
+    if (messageLength !== null && messageBuffer.length >= messageLength) {
+      const messageBytes = messageBuffer.slice(0, messageLength);
+      messageBuffer = messageBuffer.slice(messageLength);
+      messageLength = null;
+
+      try {
+        const message = JSON.parse(messageBytes.toString('utf8'));
+        handleMessage(message);
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: `Invalid message format: ${error.message}`
+        });
+      }
+    } else {
+      break;
+    }
+  }
+}
+
+// Handle incoming message
+async function handleMessage(message) {
+  const { action, requestId } = message;
+
+  try {
+    let response;
+
+    switch (action) {
+      case 'generateSummary':
+        response = await handleGenerateSummary(message);
+        break;
+
+      case 'saveToNotes':
+        response = await handleSaveToNotes(message);
+        break;
+
+      case 'listFolders':
+        response = await handleListFolders();
+        break;
+
+      default:
+        response = {
+          success: false,
+          error: `Unknown action: ${action}`
+        };
+    }
+
+    // Include requestId in response
+    response.requestId = requestId;
+    sendResponse(response);
+
+  } catch (error) {
+    sendResponse({
+      requestId,
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+// Handle generate summary action
+async function handleGenerateSummary(message) {
+  const { videoId, title, transcript, customInstructions, requestId } = message;
+
+  if (!videoId) {
+    return { success: false, error: 'Video ID is required' };
+  }
+
+  if (!transcript) {
+    return { success: false, error: 'Transcript is required' };
+  }
+
+  try {
+    logDebug(`Received transcript: ${transcript.length} characters`);
+    if (customInstructions) {
+      logDebug('Using custom analysis instructions');
+    }
+
+    // Progress callback to send updates back to Chrome
+    const onProgress = (progress) => {
+      logDebug(`Progress: ${progress.stage} - ${progress.message}`);
+      sendResponse({
+        type: 'progress',
+        requestId: requestId,
+        progress: progress
+      });
+    };
+
+    // Generate summary with Claude
+    logDebug('Generating summary with Claude Code...');
+    const summaryResult = await claudeBridge.generateSummary(title, transcript, customInstructions, onProgress);
+
+    if (!summaryResult.success) {
+      return summaryResult;
+    }
+
+    logDebug('Summary generated successfully');
+
+    return {
+      success: true,
+      summary: summaryResult.summary,
+      keyLearnings: summaryResult.keyLearnings
+    };
+
+  } catch (error) {
+    logDebug(`Error: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Handle save to Apple Notes action
+async function handleSaveToNotes(message) {
+  const { folder, videoTitle, videoUrl, summary, keyLearnings, customNotes } = message;
+
+  if (!folder || !videoTitle || !summary) {
+    return {
+      success: false,
+      error: 'Missing required fields for saving to Notes'
+    };
+  }
+
+  try {
+    logDebug(`Saving to Apple Notes folder: ${folder}`);
+
+    await appleNotes.saveNote({
+      folder,
+      title: videoTitle,
+      url: videoUrl,
+      summary,
+      keyLearnings,
+      customNotes
+    });
+
+    logDebug('Saved to Apple Notes successfully');
+
+    return {
+      success: true,
+      message: `Saved to "${folder}" in Apple Notes`
+    };
+
+  } catch (error) {
+    logDebug(`Error saving to Notes: ${error.message}`);
+    return {
+      success: false,
+      error: `Failed to save to Apple Notes: ${error.message}`
+    };
+  }
+}
+
+// Handle list folders action
+async function handleListFolders() {
+  try {
+    logDebug('Fetching Apple Notes folders...');
+    const folders = await appleNotes.listFolders();
+    logDebug(`Found ${folders.length} folders`);
+
+    return {
+      success: true,
+      folders: folders
+    };
+  } catch (error) {
+    logDebug(`Error listing folders: ${error.message}`);
+    return {
+      success: false,
+      error: `Failed to list folders: ${error.message}`
+    };
+  }
+}
+
+// Send response to Chrome
+function sendResponse(response) {
+  const message = JSON.stringify(response);
+  const messageBytes = Buffer.from(message, 'utf8');
+  const lengthBytes = Buffer.alloc(4);
+  lengthBytes.writeUInt32LE(messageBytes.length, 0);
+
+  process.stdout.write(lengthBytes);
+  process.stdout.write(messageBytes);
+}
+
+// Debug logging to file (since stdout is used for messaging)
+function logDebug(message) {
+  const logFile = path.join(process.env.HOME, '.youtube-summary-extension.log');
+  const timestamp = new Date().toISOString();
+  fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`);
+}
+
+// Log startup
+logDebug('Native messaging host started');
+
+// Keep process alive
+process.stdin.resume();

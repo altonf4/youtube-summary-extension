@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube Summary Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <div class="settings-container">
+    <header>
+      <h1>Settings</h1>
+      <p class="subtitle">Customize how Claude analyzes your videos</p>
+    </header>
+
+    <div class="settings-content">
+      <!-- Prompt Configuration -->
+      <section class="setting-section">
+        <div class="section-header">
+          <h2>Analysis Instructions</h2>
+          <button id="reset-prompt-btn" class="text-btn">Reset to Default</button>
+        </div>
+        <p class="section-description">
+          Tell Claude what to focus on when summarizing videos. The output format (summary + key learnings) is automatically enforced.
+        </p>
+
+        <div class="prompt-editor">
+          <textarea id="prompt-template" rows="12" placeholder="Enter your custom instructions..."></textarea>
+        </div>
+
+        <div class="prompt-variables">
+          <h3>Available variables:</h3>
+          <div class="variable-list">
+            <div class="variable">
+              <code>{title}</code>
+              <span>The YouTube video title</span>
+            </div>
+            <div class="variable">
+              <code>{transcript}</code>
+              <span>The full video transcript</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="prompt-examples">
+          <h3>Example customizations:</h3>
+          <div class="example-list">
+            <button class="example-btn" data-prompt="Focus on actionable business insights and strategies. Extract learnings that can be immediately applied to grow a business or improve processes.">Business & Strategy</button>
+            <button class="example-btn" data-prompt="Focus on technical concepts and implementation details. Extract learnings about coding patterns, architecture decisions, and best practices.">Technical/Coding</button>
+            <button class="example-btn" data-prompt="Focus on personal development and self-improvement advice. Extract learnings about habits, mindset, and life skills.">Personal Development</button>
+            <button class="example-btn" data-prompt="Focus on key facts, research findings, and educational content. Extract learnings that are backed by evidence or expert knowledge.">Educational/Research</button>
+            <button class="example-btn" data-prompt="Provide a detailed, comprehensive analysis. Include nuances, context, and multiple perspectives. Extract more granular learnings (aim for 10+ points).">Deep Analysis</button>
+            <button class="example-btn" data-prompt="Be extremely concise. Provide a 2-3 sentence summary and only the 3 most critical takeaways.">Quick Summary</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Preview -->
+      <section class="setting-section">
+        <h2>How it works</h2>
+        <p class="section-description">
+          Your instructions are combined with a system prompt that ensures Claude always outputs in the correct format for the extension to parse.
+        </p>
+        <div class="format-preview">
+          <div class="preview-label">Your instructions +</div>
+          <div class="preview-box">
+            <strong>System format (auto-added):</strong>
+            <pre>SUMMARY:
+[2-3 paragraph summary]
+
+KEY LEARNINGS:
+- [Learning 1]
+- [Learning 2]
+- ...</pre>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      <div class="footer-actions">
+        <button id="save-btn" class="primary-btn">Save Settings</button>
+        <span id="save-status" class="save-status"></span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
