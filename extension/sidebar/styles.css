@@ -1058,6 +1058,116 @@ header h1::before {
   border-color: var(--accent);
 }
 
+/* Quick Export Buttons */
+.quick-export-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.export-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.export-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+}
+
+.export-btn:active {
+  background: var(--bg-active);
+}
+
+.export-btn.success {
+  background: var(--success-light);
+  border-color: var(--success);
+  color: var(--success-text);
+}
+
+.export-btn svg {
+  flex-shrink: 0;
+}
+
+/* Apple Notes Export Section */
+.apple-notes-export {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.export-option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-primary);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.native-status-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.native-status-badge.available {
+  background: var(--success-light);
+  color: var(--success-text);
+}
+
+.native-status-badge.unavailable {
+  background: var(--accent-light);
+  color: var(--accent-text);
+}
+
+#apple-notes-available {
+  padding: 12px 16px;
+}
+
+#apple-notes-available .folder-selector {
+  margin-bottom: 12px;
+}
+
+#apple-notes-available .primary-btn {
+  margin-top: 4px;
+}
+
+.unavailable-message {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 16px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.unavailable-message a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.unavailable-message a:hover {
+  text-decoration: underline;
+}
+
 /* ============================================
    Success & Error States
    ============================================ */

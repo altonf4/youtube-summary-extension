@@ -58,6 +58,15 @@ function init() {
 
   // Set up search functionality
   initTranscriptSearch();
+
+  // New export button listeners
+  const copyBtn = document.getElementById('copy-clipboard-btn');
+  const downloadBtn = document.getElementById('download-md-btn');
+  if (copyBtn) copyBtn.addEventListener('click', handleCopyToClipboard);
+  if (downloadBtn) downloadBtn.addEventListener('click', handleDownloadMarkdown);
+
+  // Check native host availability (for Apple Notes)
+  checkNativeHostAvailability();
 }
 
 // Close sidebar (sends message to content script)
@@ -507,6 +516,189 @@ function getSelectedLinks() {
   });
 
   return links;
+}
+
+// =====================================
+// EXPORT: Markdown Formatter
+// =====================================
+
+/**
+ * Format summary data as Markdown
+ * @returns {string} Markdown formatted string
+ */
+function formatAsMarkdown() {
+  const editedSummary = document.getElementById('summary-text').innerText.trim();
+  const learnings = getEditedLearnings();
+  const links = getSelectedLinks();
+  const customNotes = getCustomNotesHtml();
+
+  const date = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  let markdown = `# ${currentVideoInfo.title}\n\n`;
+  markdown += `**URL:** ${currentVideoInfo.url}\n`;
+  markdown += `**Date:** ${date}\n\n`;
+  markdown += `## Summary\n\n${editedSummary || currentSummary.summary}\n\n`;
+  markdown += `## Key Learnings\n\n`;
+
+  learnings.forEach(learning => {
+    markdown += `- ${learning}\n`;
+  });
+
+  if (links.length > 0) {
+    markdown += `\n## Relevant Links\n\n`;
+    links.forEach(link => {
+      markdown += `- [${link.text}](${link.url})`;
+      if (link.reason) markdown += ` - ${link.reason}`;
+      markdown += '\n';
+    });
+  }
+
+  if (customNotes) {
+    // Convert HTML to simple markdown
+    const plainNotes = customNotes
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?b>/gi, '**')
+      .replace(/<\/?strong>/gi, '**')
+      .replace(/<\/?i>/gi, '_')
+      .replace(/<\/?em>/gi, '_')
+      .replace(/<\/?u>/gi, '')
+      .replace(/<li>/gi, '- ')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, '');
+    markdown += `\n## My Notes\n\n${plainNotes}\n`;
+  }
+
+  markdown += `\n---\n*Generated with YouTube Summary Extension*\n`;
+
+  return markdown;
+}
+
+// =====================================
+// EXPORT: Copy to Clipboard
+// =====================================
+
+async function handleCopyToClipboard() {
+  const copyBtn = document.getElementById('copy-clipboard-btn');
+  if (!copyBtn) return;
+
+  const originalHTML = copyBtn.innerHTML;
+
+  try {
+    const markdown = formatAsMarkdown();
+    await navigator.clipboard.writeText(markdown);
+
+    // Success feedback
+    copyBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+      Copied!
+    `;
+    copyBtn.classList.add('success');
+
+    setTimeout(() => {
+      copyBtn.innerHTML = originalHTML;
+      copyBtn.classList.remove('success');
+    }, 2000);
+
+  } catch (error) {
+    console.error('Failed to copy:', error);
+    copyBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+      Failed
+    `;
+    setTimeout(() => {
+      copyBtn.innerHTML = originalHTML;
+    }, 2000);
+  }
+}
+
+// =====================================
+// EXPORT: Download as Markdown
+// =====================================
+
+function handleDownloadMarkdown() {
+  const downloadBtn = document.getElementById('download-md-btn');
+  if (!downloadBtn) return;
+
+  const originalHTML = downloadBtn.innerHTML;
+  const markdown = formatAsMarkdown();
+
+  // Create safe filename from video title
+  const safeTitle = currentVideoInfo.title
+    .replace(/[^a-z0-9]/gi, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 50);
+
+  const filename = `${safeTitle}-summary.md`;
+
+  // Create blob and download
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  // Success feedback
+  downloadBtn.innerHTML = `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+    Downloaded!
+  `;
+  downloadBtn.classList.add('success');
+
+  setTimeout(() => {
+    downloadBtn.innerHTML = originalHTML;
+    downloadBtn.classList.remove('success');
+  }, 2000);
+}
+
+// =====================================
+// Native Host Availability Check
+// =====================================
+
+let nativeHostAvailable = null;
+
+async function checkNativeHostAvailability() {
+  const badge = document.getElementById('native-status-badge');
+  const availableSection = document.getElementById('apple-notes-available');
+  const unavailableSection = document.getElementById('apple-notes-unavailable');
+
+  if (!badge) return;
+
+  try {
+    // Try a simple ping to native host
+    const response = await sendNativeMessage({ action: 'listFolders' });
+
+    if (response.success) {
+      nativeHostAvailable = true;
+      badge.textContent = 'Available';
+      badge.className = 'native-status-badge available';
+      if (availableSection) availableSection.style.display = 'block';
+      if (unavailableSection) unavailableSection.style.display = 'none';
+    } else {
+      throw new Error('Native host not responding');
+    }
+  } catch (error) {
+    nativeHostAvailable = false;
+    badge.textContent = 'Not configured';
+    badge.className = 'native-status-badge unavailable';
+    if (availableSection) availableSection.style.display = 'none';
+    if (unavailableSection) unavailableSection.style.display = 'block';
+  }
 }
 
 // Handle Save to Apple Notes

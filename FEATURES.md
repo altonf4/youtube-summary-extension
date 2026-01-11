@@ -177,6 +177,36 @@ This document tracks all feature requests and implementations for the YouTube Su
   - host.js passes both to claude-bridge.js
   - parseResponse() extracts and marks creator additions
 
+### 12. Light/Dark Mode Support
+**Request:** Style the extension to support both light and dark mode based on system preference.
+
+**Implementation:**
+- Complete CSS redesign using CSS custom properties for theming
+- Auto-switches based on `prefers-color-scheme` media query
+- Light mode: warm stone palette with orange accent (#d97706)
+- Dark mode: charcoal backgrounds (#171717) with amber accent (#f59e0b)
+- Claude-inspired design with rounded pill buttons
+
+### 13. Multi-Export Options & Streamlined Installation
+**Request:** Add web-based export alternatives (clipboard, markdown download) and improve installation process.
+
+**Implementation:**
+- **Quick Export Buttons** (no native host required):
+  - "Copy to Clipboard" - copies formatted markdown to clipboard
+  - "Download .md" - downloads summary as markdown file
+  - Visual feedback on button success/failure states
+- **Apple Notes Graceful Degradation**:
+  - `checkNativeHostAvailability()` pings native host on load
+  - Shows "Available"/"Not configured" status badge
+  - Hides Apple Notes section if native host unavailable
+  - Users can still use clipboard/download without full setup
+- **Improved Install Script** (`install.sh`):
+  - Colored terminal output (green/yellow/red status indicators)
+  - Claude CLI detection with helpful install instructions
+  - Auto-detect extension ID from Chrome profile
+  - Non-blocking if Claude not found (warns but continues)
+  - Extension ID format validation
+
 ---
 
 ## Architecture Overview
@@ -212,12 +242,11 @@ sidebar.js (updateProgressUI)
 
 ## Pending / Future Ideas
 
-- [ ] Update existing note instead of creating new one when re-saving
-- [ ] Export to other note apps (Notion, Obsidian, etc.)
+- [ ] Notion integration (API-based export)
 - [ ] Batch process multiple videos
 - [ ] Keyboard shortcuts
-- [ ] Dark mode support
 - [ ] Custom summary templates
+- [ ] Obsidian export
 
 ---
 
@@ -225,13 +254,14 @@ sidebar.js (updateProgressUI)
 
 ### Key Files Modified
 - `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding, description/link extraction
-- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane
-- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality
-- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting
+- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane, multi-export UI
+- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality, export handlers (clipboard, download), native host check
+- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting, light/dark mode theming, export button styles
 - `extension/background.js` - Progress callback routing
 - `native-host/host.js` - Progress message sending, description/links pass-through
 - `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing
 - `native-host/apple-notes.js` - listFolders(), relevant links in saved notes
+- `install.sh` - Improved installer with colored output, Claude CLI detection, auto-detection
 
 ### Storage
 - `localStorage['youtube-summary-btn-position']` - Floating button position
