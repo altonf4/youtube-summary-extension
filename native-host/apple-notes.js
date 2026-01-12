@@ -148,18 +148,16 @@ function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = []
     .join('\n');
 
   // Build action items section if provided
-  // Note: Apple Notes native checklists cannot be created programmatically via AppleScript/HTML.
-  // Using plain bullet points - users can select and convert to checklist manually if desired.
+  // Using data-checked attribute which Apple Notes may recognize as native checklist
   const actionItemsSection = actionItems.length > 0 ? `
 <br>
 <h2>Action Items</h2>
 <ul>
 ${actionItems.map(item => {
-    const dueDateStr = item.dueDate ? ` <span style="color: #888;">(Due: ${formatDisplayDate(item.dueDate)})</span>` : '';
-    return `<li>${escapeHtml(item.text)}${dueDateStr}</li>`;
+    const dueDateStr = item.dueDate ? ` (Due: ${formatDisplayDate(item.dueDate)})` : '';
+    return `<li data-checked="false">${escapeHtml(item.text)}${dueDateStr}</li>`;
   }).join('\n')}
-</ul>
-<p style="color: #888; font-size: 11px; font-style: italic;">Tip: Select items above and click the checklist button to convert to an interactive checklist</p>` : '';
+</ul>` : '';
 
   // Build links section if provided
   const linksSection = relevantLinks.length > 0 ? `
