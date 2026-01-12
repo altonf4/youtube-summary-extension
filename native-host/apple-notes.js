@@ -147,15 +147,14 @@ function formatNoteContent(title, url, summary, keyLearnings, relevantLinks = []
     .map(learning => `<li>${escapeHtml(learning)}</li>`)
     .join('\n');
 
-  // Build action items section if provided
-  // Using data-checked attribute which Apple Notes may recognize as native checklist
+  // Build action items section if provided (plain bullets - native checklists not supported via AppleScript)
   const actionItemsSection = actionItems.length > 0 ? `
 <br>
 <h2>Action Items</h2>
 <ul>
 ${actionItems.map(item => {
     const dueDateStr = item.dueDate ? ` (Due: ${formatDisplayDate(item.dueDate)})` : '';
-    return `<li data-checked="false">${escapeHtml(item.text)}${dueDateStr}</li>`;
+    return `<li>${escapeHtml(item.text)}${dueDateStr}</li>`;
   }).join('\n')}
 </ul>` : '';
 
