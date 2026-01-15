@@ -286,6 +286,27 @@ content.js (chrome.runtime.onMessage)
 sidebar.js (updateProgressUI)
 ```
 
+### 16. Select/Unselect All & Reminders Default Setting
+**Request:** Add select/unselect all buttons for action items and key learnings sections. Add a setting for whether reminders should be checked by default.
+
+**Implementation:**
+- **Select/Unselect All Buttons**:
+  - Added "Select All / Unselect All" toggle button to Key Learnings section header
+  - Added "Select All / Unselect All" toggle button to Action Items section header
+  - Button text dynamically updates based on current checkbox state
+  - Uses `toggleAllCheckboxes(section)` function in sidebar.js
+  - Dispatches change events to ensure proper state tracking
+- **Reminders Default Setting** (`settings.html`, `settings.js`, `settings.css`):
+  - New "Action Items / Reminders" settings section
+  - Checkbox: "Select action items by default"
+  - Stored as `remindersCheckedByDefault` in chrome.storage.sync
+  - Default value: true (checked)
+  - Hint text explains behavior when unchecked
+- **UI Updates** (`sidebar.html`, `styles.css`):
+  - New `.section-header-with-actions` layout for headers with toggle buttons
+  - New `.select-toggle-btn` styling (subtle border, hover effect)
+  - Both sections use consistent header layout
+
 ---
 
 ## Pending / Future Ideas
@@ -316,3 +337,4 @@ sidebar.js (updateProgressUI)
 - `localStorage['youtube-summary-btn-position']` - Floating button position
 - `chrome.storage.local['folderSuggestions']` - Previously used folder names
 - `chrome.storage.sync['analysisInstructions']` - Custom analysis instructions
+- `chrome.storage.sync['remindersCheckedByDefault']` - Whether action items are checked by default (default: true)
