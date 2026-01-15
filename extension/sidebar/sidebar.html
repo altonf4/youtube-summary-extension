@@ -156,20 +156,26 @@
         </div>
 
         <div class="key-learnings">
-          <h2>Key Learnings <span class="edit-hint">(click to edit)</span></h2>
+          <div class="section-header-with-actions">
+            <h2>Key Learnings <span class="edit-hint">(click to edit)</span></h2>
+            <button id="toggle-all-learnings" class="select-toggle-btn" title="Select/Unselect all">Select All</button>
+          </div>
           <div id="key-learnings-list" class="learnings-list"></div>
         </div>
 
         <!-- Action Items Section -->
         <div class="action-items" id="action-items-section" style="display: none;">
-          <h2>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 11l3 3L22 4"></path>
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-            </svg>
-            Action Items
-            <span class="edit-hint">(saved to Reminders)</span>
-          </h2>
+          <div class="section-header-with-actions">
+            <h2>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 11l3 3L22 4"></path>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              Action Items
+              <span class="edit-hint">(saved to Reminders)</span>
+            </h2>
+            <button id="toggle-all-actions" class="select-toggle-btn" title="Select/Unselect all">Select All</button>
+          </div>
           <div class="action-items-settings">
             <label>
               <span>Default due:</span>

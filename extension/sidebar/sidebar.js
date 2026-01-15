@@ -51,6 +51,10 @@ function init() {
   // Summary toggle button
   document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
 
+  // Select/Unselect All buttons
+  document.getElementById('toggle-all-learnings').addEventListener('click', () => toggleAllCheckboxes('learnings'));
+  document.getElementById('toggle-all-actions').addEventListener('click', () => toggleAllCheckboxes('actions'));
+
   // Load folder suggestions from storage
   loadFolderSuggestions();
 
@@ -84,6 +88,35 @@ function toggleSummary() {
     const isCollapsed = summaryText.classList.toggle('collapsed');
     toggleBtn.classList.toggle('expanded', !isCollapsed);
   }
+}
+
+/**
+ * Toggle all checkboxes in a section (select all / unselect all)
+ * @param {string} section - 'learnings' or 'actions'
+ */
+function toggleAllCheckboxes(section) {
+  const listId = section === 'learnings' ? 'key-learnings-list' : 'action-items-list';
+  const btnId = section === 'learnings' ? 'toggle-all-learnings' : 'toggle-all-actions';
+
+  const list = document.getElementById(listId);
+  const btn = document.getElementById(btnId);
+
+  if (!list || !btn) return;
+
+  const checkboxes = list.querySelectorAll('input[type="checkbox"]');
+  if (checkboxes.length === 0) return;
+
+  // Check if all are currently checked
+  const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+
+  // Toggle all checkboxes
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // Update button text
+  btn.textContent = allChecked ? 'Select All' : 'Unselect All';
 }
 
 // Open settings page
@@ -412,6 +445,10 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
     }, 0);
   });
 
+  // Update toggle button text (all checked by default)
+  const learningsToggleBtn = document.getElementById('toggle-all-learnings');
+  if (learningsToggleBtn) learningsToggleBtn.textContent = 'Unselect All';
+
   // Clear custom notes editor
   document.getElementById('custom-notes-editor').innerHTML = '';
 
@@ -430,7 +467,7 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
  * Display action items with checkboxes and due date pickers
  * @param {string[]} actionItems - Array of action item strings
  */
-function displayActionItems(actionItems) {
+async function displayActionItems(actionItems) {
   const actionSection = document.getElementById('action-items-section');
   const actionList = document.getElementById('action-items-list');
 
@@ -443,6 +480,15 @@ function displayActionItems(actionItems) {
 
   actionSection.style.display = 'block';
   actionList.innerHTML = '';
+
+  // Load setting for reminders checked by default
+  let remindersCheckedByDefault = true;
+  try {
+    const settings = await chrome.storage.sync.get(['remindersCheckedByDefault']);
+    remindersCheckedByDefault = settings.remindersCheckedByDefault !== false; // Default to true
+  } catch (error) {
+    console.error('Error loading reminders setting:', error);
+  }
 
   // Get default due date from dropdown
   const defaultDueDays = parseInt(document.getElementById('default-due-days').value, 10) || 7;
@@ -457,7 +503,7 @@ function displayActionItems(actionItems) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = `action-${index}`;
-    checkbox.checked = true;
+    checkbox.checked = remindersCheckedByDefault;
 
     // Create content container
     const contentDiv = document.createElement('div');
@@ -502,6 +548,12 @@ function displayActionItems(actionItems) {
     // Trigger initial resize after DOM renders
     setTimeout(autoResize, 10);
   });
+
+  // Update toggle button text based on initial checked state
+  const actionsToggleBtn = document.getElementById('toggle-all-actions');
+  if (actionsToggleBtn) {
+    actionsToggleBtn.textContent = remindersCheckedByDefault ? 'Unselect All' : 'Select All';
+  }
 
   // Update default due dates when dropdown changes
   document.getElementById('default-due-days').addEventListener('change', (e) => {

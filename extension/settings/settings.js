@@ -14,15 +14,19 @@ const promptTextarea = document.getElementById('prompt-template');
 const saveBtn = document.getElementById('save-btn');
 const resetBtn = document.getElementById('reset-prompt-btn');
 const saveStatus = document.getElementById('save-status');
+const remindersCheckedCheckbox = document.getElementById('reminders-checked-default');
 
 // Load settings on page load
 async function loadSettings() {
   try {
-    const result = await chrome.storage.sync.get(['analysisInstructions']);
+    const result = await chrome.storage.sync.get(['analysisInstructions', 'remindersCheckedByDefault']);
     promptTextarea.value = result.analysisInstructions || DEFAULT_INSTRUCTIONS;
+    // Default to true (checked) if not set
+    remindersCheckedCheckbox.checked = result.remindersCheckedByDefault !== false;
   } catch (error) {
     console.error('Error loading settings:', error);
     promptTextarea.value = DEFAULT_INSTRUCTIONS;
+    remindersCheckedCheckbox.checked = true;
   }
 }
 
@@ -30,7 +34,8 @@ async function loadSettings() {
 async function saveSettings() {
   try {
     await chrome.storage.sync.set({
-      analysisInstructions: promptTextarea.value
+      analysisInstructions: promptTextarea.value,
+      remindersCheckedByDefault: remindersCheckedCheckbox.checked
     });
 
     // Show save status
