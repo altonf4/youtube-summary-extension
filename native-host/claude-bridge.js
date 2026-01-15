@@ -262,20 +262,31 @@ function callClaudeCode(prompt, onProgress = () => {}) {
  * @returns {string|null} - Path to claude or null
  */
 function findClaudeCodeCommand() {
-  // Common locations for claude
+  // Common locations for claude - check newer locations first
   const possiblePaths = [
+    path.join(os.homedir(), '.claude/local/claude'), // New Claude CLI location (preferred)
     'claude', // In PATH
     '/usr/local/bin/claude',
     path.join(os.homedir(), '.local/bin/claude'),
-    '/opt/homebrew/bin/claude'
+    '/opt/homebrew/bin/claude' // Old npm-installed version
   ];
 
   const { execSync } = require('child_process');
+  const fs = require('fs');
 
   for (const cmdPath of possiblePaths) {
     try {
-      execSync(`which ${cmdPath}`, { stdio: 'ignore' });
-      return cmdPath;
+      // For absolute paths, check if file exists and is executable
+      if (path.isAbsolute(cmdPath)) {
+        if (fs.existsSync(cmdPath)) {
+          fs.accessSync(cmdPath, fs.constants.X_OK);
+          return cmdPath;
+        }
+      } else {
+        // For command names, use which
+        execSync(`which ${cmdPath}`, { stdio: 'ignore' });
+        return cmdPath;
+      }
     } catch {
       continue;
     }
