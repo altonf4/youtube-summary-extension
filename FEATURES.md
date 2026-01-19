@@ -324,6 +324,33 @@ sidebar.js (updateProgressUI)
   - Added `animation-fill-mode: forwards` to CSS
   - Added explicit `opacity: 1` to CSS as fallback
 
+### 18. Comprehensive Test Suite for Native Host
+**Request:** Backfill tests based on the features list.
+
+**Implementation:**
+- **Jest Framework Setup** (`native-host/package.json`):
+  - Added Jest as dev dependency
+  - Configured `npm test` command with coverage reporting
+- **Test Files Created**:
+  - `claude-bridge.test.js` - 45 tests covering:
+    - `createPrompt()` - Basic prompts, custom instructions, truncation, links, comments
+    - `parseResponse()` - Structured parsing, bullet formats, action items, creator additions, link matching
+    - `createFollowUpPrompt()` - Follow-up queries with existing learnings
+    - `parseFollowUpResponse()` - Bullet extraction, sentence splitting
+  - `apple-notes.test.js` - 26 tests covering:
+    - `escapeForAppleScript()` - Backslashes, quotes, newlines
+    - `escapeHtml()` - HTML special characters, XSS prevention
+    - `formatDisplayDate()` - ISO to readable date format
+    - `formatNoteContent()` - Full HTML note generation with all sections
+  - `apple-reminders.test.js` - 10 tests for AppleScript escaping with null handling
+  - `logger.test.js` - 9 tests for logging and log format
+- **Module Changes**:
+  - Exported internal pure functions for testability
+  - No changes to existing functionality
+- **Coverage**:
+  - 80 tests, all passing
+  - Covers prompt creation, response parsing, formatting, escaping
+
 ---
 
 ## Pending / Future Ideas
