@@ -38,7 +38,7 @@ async function generateSpeech(text, voiceId, apiKey) {
     const options = {
       hostname: ELEVENLABS_API_BASE,
       port: 443,
-      path: `/v1/text-to-speech/${voiceId}`,
+      path: `/v1/text-to-speech/${voiceId}/stream`,
       method: 'POST',
       headers: {
         'Accept': 'audio/mpeg',
