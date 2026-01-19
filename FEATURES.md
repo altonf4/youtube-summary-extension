@@ -368,6 +368,40 @@ sidebar.js (updateProgressUI)
   - 80 tests, all passing
   - Covers prompt creation, response parsing, formatting, escaping
 
+### 20. Extract More Enhancements (Tooltip, Dynamic Routing, Add/Remove)
+**Request:** Improve the "Extract More" feature with: (1) tooltip explaining the feature, (2) dynamic AI decision making to classify items as insights or action items based on the query, (3) ability to manually add/remove items.
+
+**Implementation:**
+- **Tooltip** (`sidebar.html`, `styles.css`):
+  - Info icon (ⓘ) added next to "Extract More" header
+  - CSS-only tooltip on hover: "Ask Claude to extract additional insights or action items from the video based on your question."
+  - Uses `data-tooltip` attribute with `::after` pseudo-element
+  - Smooth fade-in transition, proper word wrapping with max-width
+- **Dynamic AI Response Routing** (`claude-bridge.js`, `sidebar.js`):
+  - Updated `createFollowUpPrompt()` to request structured JSON output
+  - Claude classifies each item as `insight` or `action` based on query intent
+  - Response format: `{ items: [{ type: "insight"|"action", text: "..." }] }`
+  - `parseFollowUpResponse()` parses JSON with fallback to plain text
+  - Defensive type checking filters malformed items
+  - `handleFollowUp()` routes insights to Key Learnings, actions to Action Items
+  - Backwards compatible with legacy `additionalLearnings` response format
+- **Delete Buttons** (`sidebar.js`, `styles.css`):
+  - Small × button added to each learning and action item
+  - Hidden by default, visible on row hover (opacity transition)
+  - Red color on button hover for danger indication
+  - `deleteItem()` removes item with fade-out animation
+- **Add Buttons** (`sidebar.html`, `sidebar.js`, `styles.css`):
+  - "+ Add Learning" button at bottom of Key Learnings section
+  - "+ Add Action Item" button at bottom of Action Items section
+  - Dashed border, subtle appearance, accent color on hover
+  - `addNewLearning()` and `addNewActionItem()` create empty items
+  - New items are checked by default and auto-focused
+  - Action items respect `remindersCheckedByDefault` setting
+- **Technical Details**:
+  - 94 tests passing (added JSON parsing and fallback tests)
+  - JSON response format designed for future MCP server extensibility
+  - Animation class `new-item` applied to dynamically added items
+
 ---
 
 ## Pending / Future Ideas
