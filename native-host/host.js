@@ -318,7 +318,13 @@ async function handleGenerateAudio(message) {
     const result = await elevenlabs.generateSpeech(text, voiceId, apiKey);
 
     if (result.success) {
-      logDebug('Audio generated successfully');
+      const audioSizeKB = Math.round((result.audioSizeBytes || 0) / 1024);
+      const base64SizeKB = Math.round((result.audio?.length || 0) / 1024);
+      logDebug(`Audio generated: ${audioSizeKB}KB raw, ${base64SizeKB}KB base64`);
+      // Chrome native messaging has 1MB limit, warn if close
+      if (base64SizeKB > 900) {
+        logDebug('WARNING: Audio size approaching 1MB native messaging limit');
+      }
     } else {
       logDebug(`Audio generation failed: ${result.error}`);
     }

@@ -168,10 +168,20 @@
             </div>
           </div>
           <div class="audio-player" id="audio-player" style="display: none;">
+            <button class="audio-play-pause" id="audio-play-pause" title="Play/Pause">
+              <svg class="play-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <svg class="pause-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </button>
             <div class="audio-progress-container">
               <div class="audio-progress-bar" id="audio-progress-bar"></div>
             </div>
             <span class="audio-time" id="audio-time">0:00</span>
+            <button class="audio-speed-btn" id="audio-speed-btn" title="Playback speed">1x</button>
           </div>
           <div id="summary-text" class="summary-text" contenteditable="true"></div>
         </div>

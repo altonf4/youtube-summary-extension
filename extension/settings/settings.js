@@ -126,7 +126,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Load voices from ElevenLabs
+// Load voices from ElevenLabs API directly
 async function loadVoices(apiKey, selectedVoiceId = null) {
   if (!voiceSelect || !voiceStatus) return;
 
@@ -135,17 +135,34 @@ async function loadVoices(apiKey, selectedVoiceId = null) {
   voiceStatus.textContent = '';
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      action: 'listVoices',
-      apiKey: apiKey
+    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'xi-api-key': apiKey
+      }
     });
 
-    if (response.success && response.voices) {
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Invalid API key');
+      }
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const json = await response.json();
+    const voices = (json.voices || []).map(v => ({
+      id: v.voice_id,
+      name: v.name,
+      category: v.category || 'custom'
+    }));
+
+    if (voices.length > 0) {
       voiceSelect.innerHTML = '';
 
       // Group voices by category
-      const premade = response.voices.filter(v => v.category === 'premade');
-      const cloned = response.voices.filter(v => v.category !== 'premade');
+      const premade = voices.filter(v => v.category === 'premade');
+      const cloned = voices.filter(v => v.category !== 'premade');
 
       if (premade.length > 0) {
         const group = document.createElement('optgroup');
@@ -172,7 +189,7 @@ async function loadVoices(apiKey, selectedVoiceId = null) {
       }
 
       voiceSelect.disabled = false;
-      voiceStatus.textContent = `${response.voices.length} voices available`;
+      voiceStatus.textContent = `${voices.length} voices available`;
       voiceStatus.style.color = '#10b981';
 
       // Restore selected voice
@@ -180,14 +197,14 @@ async function loadVoices(apiKey, selectedVoiceId = null) {
         voiceSelect.value = selectedVoiceId;
       }
     } else {
-      voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
-      voiceStatus.textContent = response.error || 'Could not load voices';
+      voiceSelect.innerHTML = '<option value="">No voices found</option>';
+      voiceStatus.textContent = 'No voices available';
       voiceStatus.style.color = '#ef4444';
     }
   } catch (error) {
     console.error('Error loading voices:', error);
     voiceSelect.innerHTML = '<option value="">Error loading voices</option>';
-    voiceStatus.textContent = 'Connection error';
+    voiceStatus.textContent = error.message || 'Connection error';
     voiceStatus.style.color = '#ef4444';
   }
 }

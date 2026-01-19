@@ -38,7 +38,7 @@ async function generateSpeech(text, voiceId, apiKey) {
     const options = {
       hostname: ELEVENLABS_API_BASE,
       port: 443,
-      path: `/v1/text-to-speech/${voiceId}/stream`,
+      path: `/v1/text-to-speech/${voiceId}`,
       method: 'POST',
       headers: {
         'Accept': 'audio/mpeg',
@@ -59,7 +59,12 @@ async function generateSpeech(text, voiceId, apiKey) {
         if (res.statusCode === 200) {
           const audioBuffer = Buffer.concat(chunks);
           const base64Audio = audioBuffer.toString('base64');
-          resolve({ success: true, audio: base64Audio });
+          // Return audio with size info for debugging
+          resolve({
+            success: true,
+            audio: base64Audio,
+            audioSizeBytes: audioBuffer.length
+          });
         } else {
           let errorMsg = `ElevenLabs API error: ${res.statusCode}`;
           try {

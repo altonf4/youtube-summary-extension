@@ -1898,11 +1898,14 @@ async function generateAudio() {
 
     // Build text content based on settings
     const textParts = [];
+    let summaryTextLength = 0;  // Track where summary ends for highlighting
 
     if (settings.audioIncludeSummary !== false) {
       const summaryText = document.getElementById('summary-text');
       if (summaryText && summaryText.innerText.trim()) {
-        textParts.push(summaryText.innerText.trim());
+        const summaryContent = summaryText.innerText.trim();
+        textParts.push(summaryContent);
+        summaryTextLength = summaryContent.length;
       }
     }
 
@@ -1927,25 +1930,28 @@ async function generateAudio() {
     }
 
     const text = textParts.join('\n\n');
+    // Store summary length for highlighting boundary
+    audioSummaryLength = summaryTextLength;
 
     if (!text) {
       throw new Error('No content to narrate');
     }
 
-    // Call native host
-    const response = await sendNativeMessage({
-      action: 'generateAudio',
-      text: text,
-      voiceId: settings.elevenlabsVoiceId,
-      apiKey: settings.elevenlabsApiKey
-    });
+    // Call ElevenLabs API directly with timestamps
+    const result = await generateElevenLabsAudio(
+      text,
+      settings.elevenlabsVoiceId,
+      settings.elevenlabsApiKey
+    );
 
-    if (response.success && response.audio) {
-      cachedAudioData = response.audio;
-      playAudio(response.audio);
-    } else {
-      throw new Error(response.error || 'Failed to generate audio');
-    }
+    // Store word timings for highlighting
+    audioWordTimings = result.wordTimings;
+    audioOriginalText = result.text;
+
+    // Convert blob to base64 for caching and playback
+    const base64Audio = await blobToBase64(result.blob);
+    cachedAudioData = base64Audio;
+    playAudio(base64Audio);
 
   } catch (error) {
     console.error('Error generating audio:', error);
@@ -1961,11 +1967,17 @@ async function generateAudio() {
  * Play audio from base64 data
  * @param {string} base64Audio - Base64 encoded MP3
  */
+// Available playback speeds
+const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 1.75, 2];
+let currentSpeedIndex = 0;
+
 function playAudio(base64Audio) {
   const audioBtn = document.getElementById('audio-btn');
   const audioPlayer = document.getElementById('audio-player');
   const progressBar = document.getElementById('audio-progress-bar');
   const audioTime = document.getElementById('audio-time');
+  const playPauseBtn = document.getElementById('audio-play-pause');
+  const speedBtn = document.getElementById('audio-speed-btn');
 
   // Stop any existing audio
   if (audioElement) {
@@ -1975,23 +1987,32 @@ function playAudio(base64Audio) {
 
   // Create audio element
   audioElement = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
+  audioElement.playbackRate = PLAYBACK_SPEEDS[currentSpeedIndex];
 
   // Show player
-  if (audioPlayer) audioPlayer.style.display = 'flex';
+  if (audioPlayer) {
+    audioPlayer.style.display = 'flex';
+    audioPlayer.classList.add('playing');
+  }
   if (audioBtn) audioBtn.classList.add('playing');
 
-  // Update progress
+  // Update progress and word highlighting
   audioElement.addEventListener('timeupdate', () => {
-    if (audioElement.duration) {
+    if (audioElement && audioElement.duration) {
       const progress = (audioElement.currentTime / audioElement.duration) * 100;
       if (progressBar) progressBar.style.width = `${progress}%`;
       if (audioTime) audioTime.textContent = formatAudioTime(audioElement.currentTime);
+
+      // Update word highlighting
+      updateWordHighlight(audioElement.currentTime);
     }
   });
 
   // Handle end
   audioElement.addEventListener('ended', () => {
-    stopAudio();
+    if (audioPlayer) audioPlayer.classList.remove('playing');
+    if (audioBtn) audioBtn.classList.remove('playing');
+    clearWordHighlight();
   });
 
   // Handle errors
@@ -2001,16 +2022,59 @@ function playAudio(base64Audio) {
     showAudioError('Playback error');
   });
 
-  // Click on progress bar to seek
+  // Click and drag on progress bar to seek
   const progressContainer = document.querySelector('.audio-progress-container');
   if (progressContainer) {
-    progressContainer.addEventListener('click', (e) => {
+    // Remove old listener by cloning
+    const newProgressContainer = progressContainer.cloneNode(true);
+    progressContainer.parentNode.replaceChild(newProgressContainer, progressContainer);
+
+    const seekToPosition = (e) => {
       if (!audioElement || !audioElement.duration) return;
-      const rect = progressContainer.getBoundingClientRect();
-      const percent = (e.clientX - rect.left) / rect.width;
+      const rect = newProgressContainer.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       audioElement.currentTime = percent * audioElement.duration;
+    };
+
+    // Click to seek
+    newProgressContainer.addEventListener('click', seekToPosition);
+
+    // Drag to scrub
+    let isDragging = false;
+    newProgressContainer.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      seekToPosition(e);
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        seekToPosition(e);
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
     });
   }
+
+  // Play/Pause button
+  if (playPauseBtn) {
+    const newPlayPauseBtn = playPauseBtn.cloneNode(true);
+    playPauseBtn.parentNode.replaceChild(newPlayPauseBtn, playPauseBtn);
+    newPlayPauseBtn.addEventListener('click', togglePlayPause);
+  }
+
+  // Speed button
+  if (speedBtn) {
+    const newSpeedBtn = speedBtn.cloneNode(true);
+    speedBtn.parentNode.replaceChild(newSpeedBtn, speedBtn);
+    newSpeedBtn.addEventListener('click', cyclePlaybackSpeed);
+  }
+
+  // Prepare summary text with pre-rendered spans for efficient highlighting
+  // This wraps each word in a span so we can highlight by just toggling a class
+  prepareSummaryForHighlighting();
 
   // Play
   audioElement.play().catch(error => {
@@ -2018,6 +2082,40 @@ function playAudio(base64Audio) {
     stopAudio();
     showAudioError('Could not play audio');
   });
+}
+
+/**
+ * Toggle play/pause state
+ */
+function togglePlayPause() {
+  const audioPlayer = document.getElementById('audio-player');
+
+  if (!audioElement) return;
+
+  if (audioElement.paused) {
+    audioElement.play();
+    if (audioPlayer) audioPlayer.classList.add('playing');
+  } else {
+    audioElement.pause();
+    if (audioPlayer) audioPlayer.classList.remove('playing');
+  }
+}
+
+/**
+ * Cycle through playback speeds
+ */
+function cyclePlaybackSpeed() {
+  currentSpeedIndex = (currentSpeedIndex + 1) % PLAYBACK_SPEEDS.length;
+  const newSpeed = PLAYBACK_SPEEDS[currentSpeedIndex];
+
+  if (audioElement) {
+    audioElement.playbackRate = newSpeed;
+  }
+
+  const speedBtn = document.getElementById('audio-speed-btn');
+  if (speedBtn) {
+    speedBtn.textContent = newSpeed === 1 ? '1x' : `${newSpeed}x`;
+  }
 }
 
 /**
@@ -2034,8 +2132,14 @@ function stopAudio() {
   }
 
   if (audioBtn) audioBtn.classList.remove('playing');
-  if (audioPlayer) audioPlayer.style.display = 'none';
+  if (audioPlayer) {
+    audioPlayer.style.display = 'none';
+    audioPlayer.classList.remove('playing');
+  }
   if (progressBar) progressBar.style.width = '0%';
+
+  // Clear word highlighting
+  clearWordHighlight();
 }
 
 /**
@@ -2047,6 +2151,158 @@ function formatAudioTime(seconds) {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Track current highlighted word index and summary boundary
+let currentHighlightIndex = -1;
+let audioSummaryLength = 0;  // Character position where summary ends
+let summaryWordSpans = [];   // Pre-rendered word spans for efficient highlighting
+
+/**
+ * Update word highlighting based on current playback time
+ * Only highlights words that are part of the summary (not learnings/actions)
+ * Uses pre-rendered spans for O(1) highlighting instead of searching
+ * @param {number} currentTime - Current audio playback time in seconds
+ */
+function updateWordHighlight(currentTime) {
+  if (!audioWordTimings || audioWordTimings.length === 0) return;
+
+  // Find the current word based on time
+  let newIndex = -1;
+  for (let i = 0; i < audioWordTimings.length; i++) {
+    const timing = audioWordTimings[i];
+    if (currentTime >= timing.startTime && currentTime <= timing.endTime) {
+      newIndex = i;
+      break;
+    }
+    // If we've passed this word's end time but not reached the next word's start
+    if (currentTime > timing.endTime && (i === audioWordTimings.length - 1 || currentTime < audioWordTimings[i + 1].startTime)) {
+      newIndex = i;
+      break;
+    }
+  }
+
+  // Check if the word is within the summary portion (not learnings/actions)
+  // Words beyond the summary length should not be highlighted
+  if (newIndex >= 0 && audioWordTimings[newIndex]) {
+    const wordCharEnd = audioWordTimings[newIndex].charEnd;
+    if (wordCharEnd > audioSummaryLength) {
+      // This word is past the summary - clear highlighting
+      newIndex = -1;
+    }
+  }
+
+  // Only update if index changed
+  if (newIndex !== currentHighlightIndex) {
+    highlightWordByIndex(newIndex);
+  }
+}
+
+/**
+ * Pre-render the summary text with word spans for efficient highlighting
+ * Called once when audio generation completes, before playback starts
+ * This is how Kindle/Audible and karaoke apps do synchronized highlighting
+ */
+function prepareSummaryForHighlighting() {
+  const summaryText = document.getElementById('summary-text');
+  if (!summaryText || !audioWordTimings || audioWordTimings.length === 0) return;
+
+  // Store original text
+  const originalText = summaryText.innerText;
+  summaryText.setAttribute('data-original-text', originalText);
+
+  // Build a map of character positions to word indices (only for summary portion)
+  // Each word timing has charStart and charEnd relative to the audio text
+  const summaryTimings = audioWordTimings.filter(t => t.charEnd <= audioSummaryLength);
+
+  if (summaryTimings.length === 0) {
+    // No words in summary portion, nothing to prepare
+    return;
+  }
+
+  // Build HTML with each word wrapped in a span
+  // We need to reconstruct the text using the character positions from timings
+  let html = '';
+  let lastPos = 0;
+  summaryWordSpans = [];
+
+  for (let i = 0; i < summaryTimings.length; i++) {
+    const timing = summaryTimings[i];
+    const wordIndex = audioWordTimings.indexOf(timing);
+
+    // Add any text between last word and this word (spaces, punctuation)
+    if (timing.charStart > lastPos) {
+      const between = originalText.substring(lastPos, timing.charStart);
+      html += escapeHtml(between);
+    }
+
+    // Add the word wrapped in a span
+    const wordText = originalText.substring(timing.charStart, timing.charEnd);
+    html += `<span class="audio-word" data-word-index="${wordIndex}">${escapeHtml(wordText)}</span>`;
+    summaryWordSpans.push(wordIndex);
+
+    lastPos = timing.charEnd;
+  }
+
+  // Add any remaining text after the last word
+  if (lastPos < originalText.length) {
+    html += escapeHtml(originalText.substring(lastPos));
+  }
+
+  summaryText.innerHTML = html;
+}
+
+/**
+ * Highlight a word by its index using pre-rendered spans (O(1) operation)
+ * @param {number} wordIndex - Index of word in audioWordTimings, or -1 to clear
+ */
+function highlightWordByIndex(wordIndex) {
+  // Remove previous highlight
+  if (currentHighlightIndex >= 0) {
+    const prevSpan = document.querySelector(`.audio-word[data-word-index="${currentHighlightIndex}"]`);
+    if (prevSpan) {
+      prevSpan.classList.remove('audio-highlight');
+    }
+  }
+
+  currentHighlightIndex = wordIndex;
+
+  // Add new highlight
+  if (wordIndex >= 0) {
+    const span = document.querySelector(`.audio-word[data-word-index="${wordIndex}"]`);
+    if (span) {
+      span.classList.add('audio-highlight');
+      // Scroll into view smoothly
+      span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Clear word highlighting and restore original text
+ */
+function clearWordHighlight() {
+  currentHighlightIndex = -1;
+  summaryWordSpans = [];
+  const summaryText = document.getElementById('summary-text');
+  if (summaryText) {
+    const original = summaryText.getAttribute('data-original-text');
+    if (original) {
+      summaryText.innerHTML = original;
+      summaryText.removeAttribute('data-original-text');
+    }
+  }
 }
 
 /**
@@ -2076,11 +2332,169 @@ function showAudioError(message) {
   }, 5000);
 }
 
+// Store word timing data for highlighting
+let audioWordTimings = null;
+let audioOriginalText = null;
+
+/**
+ * Generate audio using ElevenLabs API with timestamps for word highlighting
+ * @param {string} text - Text to convert to speech
+ * @param {string} voiceId - ElevenLabs voice ID
+ * @param {string} apiKey - ElevenLabs API key
+ * @returns {Promise<{blob: Blob, wordTimings: Array}>} Audio blob and word timings
+ */
+async function generateElevenLabsAudio(text, voiceId, apiKey) {
+  // Truncate text if too long (ElevenLabs limit ~5000 chars)
+  const maxChars = 5000;
+  const truncatedText = text.length > maxChars
+    ? text.substring(0, maxChars) + '...'
+    : text;
+
+  // Use with-timestamps endpoint for word highlighting
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'xi-api-key': apiKey
+    },
+    body: JSON.stringify({
+      text: truncatedText,
+      model_id: 'eleven_turbo_v2_5',
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75
+      }
+    })
+  });
+
+  if (!response.ok) {
+    let errorMsg = `ElevenLabs API error: ${response.status}`;
+    try {
+      const json = await response.json();
+      if (json.detail) {
+        errorMsg = json.detail.message || json.detail;
+      }
+    } catch (e) {
+      // Ignore parse errors
+    }
+    throw new Error(errorMsg);
+  }
+
+  const json = await response.json();
+
+  // Extract audio from base64
+  const audioBase64 = json.audio_base64;
+  const audioBlob = base64ToBlob(audioBase64, 'audio/mpeg');
+
+  // Extract word timings from alignment data
+  const wordTimings = extractWordTimings(json.alignment, truncatedText);
+
+  return { blob: audioBlob, wordTimings, text: truncatedText };
+}
+
+/**
+ * Convert base64 string to Blob
+ * @param {string} base64 - Base64 encoded string
+ * @param {string} mimeType - MIME type
+ * @returns {Blob}
+ */
+function base64ToBlob(base64, mimeType) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Extract word timings from ElevenLabs alignment data
+ * @param {Object} alignment - Alignment data from ElevenLabs
+ * @param {string} text - Original text
+ * @returns {Array<{word: string, startTime: number, endTime: number, charStart: number, charEnd: number}>}
+ */
+function extractWordTimings(alignment, text) {
+  if (!alignment || !alignment.characters || !alignment.character_start_times_seconds) {
+    return [];
+  }
+
+  const chars = alignment.characters;
+  const startTimes = alignment.character_start_times_seconds;
+  const endTimes = alignment.character_end_times_seconds;
+
+  const wordTimings = [];
+  let currentWord = '';
+  let wordStartTime = null;
+  let wordCharStart = null;
+
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+
+    if (char === ' ' || char === '\n') {
+      // End of word
+      if (currentWord.length > 0) {
+        wordTimings.push({
+          word: currentWord,
+          startTime: wordStartTime,
+          endTime: endTimes[i - 1] || startTimes[i],
+          charStart: wordCharStart,
+          charEnd: wordCharStart + currentWord.length
+        });
+      }
+      currentWord = '';
+      wordStartTime = null;
+      wordCharStart = null;
+    } else {
+      // Part of word
+      if (currentWord.length === 0) {
+        wordStartTime = startTimes[i];
+        wordCharStart = i;
+      }
+      currentWord += char;
+    }
+  }
+
+  // Handle last word
+  if (currentWord.length > 0) {
+    wordTimings.push({
+      word: currentWord,
+      startTime: wordStartTime,
+      endTime: endTimes[chars.length - 1] || startTimes[chars.length - 1],
+      charStart: wordCharStart,
+      charEnd: wordCharStart + currentWord.length
+    });
+  }
+
+  return wordTimings;
+}
+
+/**
+ * Convert Blob to base64 string
+ * @param {Blob} blob
+ * @returns {Promise<string>}
+ */
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // Remove data URL prefix (data:audio/mpeg;base64,)
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 /**
  * Clear cached audio when summary changes
  */
 function clearCachedAudio() {
   cachedAudioData = null;
+  audioWordTimings = null;
+  audioOriginalText = null;
+  audioSummaryLength = 0;
   stopAudio();
 }
 
