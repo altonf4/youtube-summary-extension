@@ -1634,3 +1634,116 @@ footer {
   width: 20px;
   height: 20px;
 }
+
+/* ============================================
+   Audio Button & Player
+   ============================================ */
+.summary-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.audio-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.audio-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.audio-btn.loading {
+  color: var(--accent);
+}
+
+.audio-btn.loading .audio-loading {
+  display: block;
+  animation: spin 1s linear infinite;
+}
+
+.audio-btn.loading .audio-icon,
+.audio-btn.loading .audio-stop {
+  display: none;
+}
+
+.audio-btn.playing {
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+.audio-btn.playing .audio-stop {
+  display: block;
+}
+
+.audio-btn.playing .audio-icon,
+.audio-btn.playing .audio-loading {
+  display: none;
+}
+
+.audio-btn .audio-loading,
+.audio-btn .audio-stop {
+  display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* Audio Player */
+.audio-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--accent-light);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.audio-progress-container {
+  flex: 1;
+  height: 4px;
+  background: var(--border-primary);
+  border-radius: 2px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.audio-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.1s linear;
+}
+
+.audio-time {
+  font-size: 11px;
+  color: var(--accent-text);
+  font-weight: 500;
+  min-width: 35px;
+  text-align: right;
+}
+
+/* Audio Error State */
+.audio-error {
+  padding: 8px 16px;
+  background: var(--error-light);
+  color: var(--error-text);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-primary);
+}
