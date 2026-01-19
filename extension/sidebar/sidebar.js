@@ -315,6 +315,9 @@ async function handleGenerateSummary() {
       throw new Error(transcriptResult.error || 'Failed to extract transcript');
     }
 
+    // Cache the transcript for search and follow-up functionality
+    cachedTranscript = transcriptResult.transcript;
+
     // Cache comments if available
     if (transcriptResult.creatorComments) {
       cachedCreatorComments = transcriptResult.creatorComments;

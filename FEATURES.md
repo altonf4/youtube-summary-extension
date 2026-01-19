@@ -324,6 +324,23 @@ sidebar.js (updateProgressUI)
   - Added `animation-fill-mode: forwards` to CSS
   - Added explicit `opacity: 1` to CSS as fallback
 
+### 19. Transcript Caching Fix for Follow-up and Search
+**Request:** Bug report - After generating a summary, follow-up questions fail with "transcript not found" and the searchable transcript doesn't display.
+
+**Root Cause Analysis:**
+- The transcript is fetched in two places:
+  1. `fetchTranscriptForPreview()` - called on init, properly caches to `cachedTranscript`
+  2. `handleGenerateSummary()` - called when generating summary, but did NOT cache the transcript
+- If `fetchTranscriptForPreview()` failed or hadn't completed before summary generation, `cachedTranscript` remained null
+- Both `handleFollowUp()` and `displaySummary()` rely on `cachedTranscript` for their functionality
+
+**Fix Applied** (`sidebar.js`):
+- Added `cachedTranscript = transcriptResult.transcript;` in `handleGenerateSummary()` after successful transcript extraction
+- Now the transcript is always cached when summary generation succeeds, ensuring:
+  - Follow-up questions work correctly
+  - Searchable transcript displays after summary generation
+- Single-line fix addressing the root cause rather than symptoms
+
 ### 18. Comprehensive Test Suite for Native Host
 **Request:** Backfill tests based on the features list.
 
