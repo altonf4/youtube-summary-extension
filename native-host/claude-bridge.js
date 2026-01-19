@@ -435,7 +435,7 @@ function parseResponse(response, descriptionLinks = []) {
  * @param {string} transcript - Video transcript
  * @param {string} query - User's follow-up question
  * @param {string[]} existingLearnings - Already extracted learnings
- * @returns {Promise<Object>} - Additional learnings
+ * @returns {Promise<Object>} - Object with insights and actions arrays
  */
 async function generateFollowUp(videoTitle, transcript, query, existingLearnings = []) {
   const log = (msg) => logger.log(msg, 'claude-bridge:followup');
@@ -454,13 +454,14 @@ async function generateFollowUp(videoTitle, transcript, query, existingLearnings
     const response = await callClaudeCode(prompt, () => {});
     log(`Response received: ${response.length} characters`);
 
-    // Parse the follow-up response
-    const additionalLearnings = parseFollowUpResponse(response);
-    log(`Parsed ${additionalLearnings.length} additional learnings`);
+    // Parse the follow-up response (returns { insights: string[], actions: string[] })
+    const parsed = parseFollowUpResponse(response);
+    log(`Parsed ${parsed.insights.length} insights, ${parsed.actions.length} actions`);
 
     return {
       success: true,
-      additionalLearnings
+      insights: parsed.insights,
+      actions: parsed.actions
     };
 
   } catch (error) {
@@ -501,28 +502,66 @@ ${truncatedTranscript}
 
 User's Question: ${query}
 
-Based on the transcript, provide additional key learnings or insights that answer the user's question. Focus specifically on what they asked for.
+Based on the transcript, extract additional information that answers the user's question.
 
-IMPORTANT: Format your response as a bullet list of learnings/insights. Each item should be on its own line starting with a dash (-).
+IMPORTANT: Classify each item as either an "insight" or "action":
+- insight: Facts, concepts, statistics, explanations, or observations from the video
+- action: Concrete tasks the viewer should do (start with verbs like Try, Implement, Research, etc.)
 
-Example format:
-- First insight or learning point
-- Second insight or learning point
-- Third insight or learning point
+Return your response as JSON in this exact format:
+{
+  "items": [
+    { "type": "insight", "text": "Your insight here" },
+    { "type": "action", "text": "Your action item here" }
+  ]
+}
 
-Only include information that is actually mentioned or can be directly inferred from the transcript. Be specific and actionable where possible.`;
+Only include information actually mentioned or directly inferable from the transcript.`;
 }
 
 /**
- * Parse follow-up response to extract learnings
+ * Parse follow-up response to extract learnings, with insight/action classification
  * @param {string} response - Raw response from Claude
- * @returns {string[]} - Array of learning strings
+ * @returns {{insights: string[], actions: string[]}} - Object with insights and actions arrays
  */
 function parseFollowUpResponse(response) {
   const cleaned = response.trim();
 
+  // Try to extract JSON from response (handle markdown code blocks)
+  const jsonMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/) ||
+                    cleaned.match(/(\{[\s\S]*"items"[\s\S]*\})/);
+
+  if (jsonMatch) {
+    try {
+      const jsonStr = jsonMatch[1] || jsonMatch[0];
+      const parsed = JSON.parse(jsonStr);
+      if (parsed.items && Array.isArray(parsed.items)) {
+        return {
+          insights: parsed.items.filter(i => i.type === 'insight').map(i => i.text),
+          actions: parsed.items.filter(i => i.type === 'action').map(i => i.text)
+        };
+      }
+    } catch {
+      // Fall through to fallback
+    }
+  }
+
+  // Fallback: treat all as insights (existing behavior for plain text responses)
+  const plainTextLearnings = parseAsPlainText(cleaned);
+  return {
+    insights: plainTextLearnings,
+    actions: []
+  };
+}
+
+/**
+ * Parse plain text response to extract learnings (fallback for non-JSON responses)
+ * @param {string} text - Cleaned response text
+ * @returns {string[]} - Array of learning strings
+ */
+function parseAsPlainText(text) {
   // Extract bullet points
-  const learnings = cleaned
+  const learnings = text
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
@@ -530,13 +569,13 @@ function parseFollowUpResponse(response) {
     .filter(line => line.length > 0);
 
   // If no bullet points found, try to split by sentences
-  if (learnings.length === 0 && cleaned.length > 0) {
+  if (learnings.length === 0 && text.length > 0) {
     // Just return the whole response as one learning if it's reasonable length
-    if (cleaned.length < 500) {
-      return [cleaned];
+    if (text.length < 500) {
+      return [text];
     }
     // Otherwise split by periods
-    const sentences = cleaned.split(/\.\s+/)
+    const sentences = text.split(/\.\s+/)
       .filter(s => s.length > 20)
       .slice(0, 5)
       .map(s => s.trim() + (s.endsWith('.') ? '' : '.'));
@@ -554,5 +593,6 @@ module.exports = {
   parseResponse,
   createFollowUpPrompt,
   parseFollowUpResponse,
+  parseAsPlainText,
   DEFAULT_INSTRUCTIONS
 };
