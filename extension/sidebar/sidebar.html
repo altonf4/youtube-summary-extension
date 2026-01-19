@@ -207,19 +207,19 @@
                 <line x1="12" y1="16" x2="12.01" y2="16"></line>
               </svg>
               Extract More
-              <span class="info-tooltip" data-tooltip="Ask Claude to extract additional insights or action items from the video based on your question.">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="16" x2="12" y2="12"></line>
-                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                </svg>
-              </span>
             </h2>
+          </div>
+          <div class="follow-up-examples">
+            <span class="examples-label">Try:</span>
+            <button class="example-chip" data-prompt="What specific tools, frameworks, or resources were mentioned?">Tools mentioned</button>
+            <button class="example-chip" data-prompt="Extract any statistics, numbers, or data points discussed">Statistics</button>
+            <button class="example-chip" data-prompt="What action items or next steps should I take?">Action items</button>
+            <button class="example-chip" data-prompt="What are the key quotes or memorable phrases?">Key quotes</button>
           </div>
           <div class="follow-up-input-container">
             <textarea
               id="follow-up-input"
-              placeholder="Ask for more details, e.g., 'What specific tools or frameworks were mentioned?' or 'Extract any statistics or numbers discussed'"
+              placeholder="Or type your own question..."
               rows="2"
             ></textarea>
             <button id="follow-up-btn" class="follow-up-btn">

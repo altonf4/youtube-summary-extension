@@ -48,6 +48,18 @@ function init() {
   // Follow-up button
   document.getElementById('follow-up-btn').addEventListener('click', handleFollowUp);
 
+  // Example chips - auto-fill textarea when clicked
+  document.querySelectorAll('.example-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const prompt = chip.dataset.prompt;
+      const textarea = document.getElementById('follow-up-input');
+      if (textarea && prompt) {
+        textarea.value = prompt;
+        textarea.focus();
+      }
+    });
+  });
+
   // Summary toggle button
   document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
 
