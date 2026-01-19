@@ -307,6 +307,23 @@ sidebar.js (updateProgressUI)
   - New `.select-toggle-btn` styling (subtle border, hover effect)
   - Both sections use consistent header layout
 
+### 17. Floating Button Visibility Fix on Banner Dismiss
+**Request:** When clicking X to dismiss the popup banner, the floating button was not appearing (unlike when clicking Summarize and then closing the sidebar).
+
+**Implementation:**
+- **Root Cause:** Two issues discovered:
+  1. CSS animation `fadeIn` was leaving opacity at 0 due to animation not completing properly
+  2. Saved button positions could be off-screen (e.g., from a wider monitor), making button invisible
+- **Fixes Applied** (`content.js`):
+  - Force opacity and disable animation with inline styles using `!important`:
+    - `floatingButton.style.setProperty('opacity', '1', 'important')`
+    - `floatingButton.style.setProperty('animation', 'none', 'important')`
+  - Added viewport bounds validation for saved positions
+  - Clear invalid positions from localStorage if off-screen
+- **CSS Fallbacks** (for future-proofing):
+  - Added `animation-fill-mode: forwards` to CSS
+  - Added explicit `opacity: 1` to CSS as fallback
+
 ---
 
 ## Pending / Future Ideas
