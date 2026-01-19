@@ -1700,10 +1700,6 @@ footer {
   display: none;
 }
 
-.hidden {
-  display: none !important;
-}
-
 /* Audio Player */
 .audio-player {
   display: flex;
