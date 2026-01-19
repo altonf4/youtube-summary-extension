@@ -55,6 +55,12 @@ function init() {
   document.getElementById('toggle-all-learnings').addEventListener('click', () => toggleAllCheckboxes('learnings'));
   document.getElementById('toggle-all-actions').addEventListener('click', () => toggleAllCheckboxes('actions'));
 
+  // Add item buttons
+  const addLearningBtn = document.getElementById('add-learning-btn');
+  const addActionBtn = document.getElementById('add-action-btn');
+  if (addLearningBtn) addLearningBtn.addEventListener('click', addNewLearning);
+  if (addActionBtn) addActionBtn.addEventListener('click', addNewActionItem);
+
   // Load folder suggestions from storage
   loadFolderSuggestions();
 
@@ -434,8 +440,21 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
       textArea.style.height = textArea.scrollHeight + 'px';
     });
 
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-item-btn';
+    deleteBtn.title = 'Remove';
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', () => deleteItem(learningItem));
+
     learningItem.appendChild(checkbox);
     learningItem.appendChild(textArea);
+    learningItem.appendChild(deleteBtn);
     learningsList.appendChild(learningItem);
 
     // Initially select all learnings
@@ -541,11 +560,24 @@ async function displayActionItems(actionItems) {
     dueDiv.appendChild(dueLabel);
     dueDiv.appendChild(dateInput);
 
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-item-btn';
+    deleteBtn.title = 'Remove';
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', () => deleteItem(actionEl));
+
     contentDiv.appendChild(textArea);
     contentDiv.appendChild(dueDiv);
 
     actionEl.appendChild(checkbox);
     actionEl.appendChild(contentDiv);
+    actionEl.appendChild(deleteBtn);
     actionList.appendChild(actionEl);
 
     // Trigger initial resize after DOM renders
@@ -1109,12 +1141,31 @@ async function handleFollowUp() {
       existingLearnings: existingLearnings
     });
 
-    if (response.success && response.additionalLearnings) {
-      // Append new learnings to the list
-      appendNewLearnings(response.additionalLearnings);
+    if (response.success) {
+      // Route insights to Key Learnings section
+      if (response.insights && response.insights.length > 0) {
+        appendNewLearnings(response.insights);
+      }
+
+      // Route actions to Action Items section
+      if (response.actions && response.actions.length > 0) {
+        appendNewActionItems(response.actions);
+      }
+
+      // Handle legacy response format (additionalLearnings)
+      if (response.additionalLearnings && response.additionalLearnings.length > 0) {
+        appendNewLearnings(response.additionalLearnings);
+      }
 
       // Clear the input
       followUpInput.value = '';
+
+      // Show error if no items were returned
+      if ((!response.insights || response.insights.length === 0) &&
+          (!response.actions || response.actions.length === 0) &&
+          (!response.additionalLearnings || response.additionalLearnings.length === 0)) {
+        throw new Error('No additional insights or actions found for your query');
+      }
     } else {
       throw new Error(response.error || 'Failed to extract additional information');
     }
@@ -1174,8 +1225,21 @@ function appendNewLearnings(newLearnings) {
       textArea.style.height = textArea.scrollHeight + 'px';
     });
 
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-item-btn';
+    deleteBtn.title = 'Remove';
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', () => deleteItem(learningItem));
+
     learningItem.appendChild(checkbox);
     learningItem.appendChild(textArea);
+    learningItem.appendChild(deleteBtn);
     learningsList.appendChild(learningItem);
 
     // Select the new learning
@@ -1193,6 +1257,297 @@ function appendNewLearnings(newLearnings) {
   if (firstNewItem) {
     firstNewItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+}
+
+/**
+ * Append new action items to the existing list with animation
+ * @param {string[]} newActions - Array of new action item strings
+ */
+async function appendNewActionItems(newActions) {
+  const actionSection = document.getElementById('action-items-section');
+  const actionList = document.getElementById('action-items-list');
+
+  if (!actionSection || !actionList) return;
+
+  // Make sure the action items section is visible
+  actionSection.style.display = 'block';
+
+  // Load setting for reminders checked by default
+  let remindersCheckedByDefault = true;
+  try {
+    const settings = await chrome.storage.sync.get(['remindersCheckedByDefault']);
+    remindersCheckedByDefault = settings.remindersCheckedByDefault !== false;
+  } catch (error) {
+    console.error('Error loading reminders setting:', error);
+  }
+
+  // Get default due date from dropdown
+  const defaultDueDays = parseInt(document.getElementById('default-due-days').value, 10) || 7;
+  const defaultDueDate = new Date();
+  defaultDueDate.setDate(defaultDueDate.getDate() + defaultDueDays);
+
+  const existingCount = actionList.querySelectorAll('.action-item').length;
+  let firstNewItem = null;
+
+  newActions.forEach((action, i) => {
+    const index = existingCount + i;
+    const actionEl = document.createElement('div');
+    actionEl.className = 'action-item new-item';
+
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = `action-${index}`;
+    checkbox.checked = remindersCheckedByDefault;
+
+    // Create content container
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'action-content';
+
+    // Create textarea for action text
+    const textArea = document.createElement('textarea');
+    textArea.className = 'action-text';
+    textArea.id = `action-text-${index}`;
+    textArea.value = action;
+    textArea.rows = 2;
+
+    // Auto-resize textarea
+    const autoResize = () => {
+      textArea.style.height = 'auto';
+      textArea.style.height = textArea.scrollHeight + 'px';
+    };
+    textArea.addEventListener('input', autoResize);
+
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-item-btn';
+    deleteBtn.title = 'Remove';
+    deleteBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    `;
+    deleteBtn.addEventListener('click', () => deleteItem(actionEl));
+
+    // Create due date container
+    const dueDiv = document.createElement('div');
+    dueDiv.className = 'action-due';
+
+    const dueLabel = document.createElement('label');
+    dueLabel.textContent = 'Due:';
+
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.id = `action-due-${index}`;
+    dateInput.value = formatDateForInput(defaultDueDate);
+
+    dueDiv.appendChild(dueLabel);
+    dueDiv.appendChild(dateInput);
+
+    contentDiv.appendChild(textArea);
+    contentDiv.appendChild(dueDiv);
+
+    actionEl.appendChild(checkbox);
+    actionEl.appendChild(contentDiv);
+    actionEl.appendChild(deleteBtn);
+    actionList.appendChild(actionEl);
+
+    // Track first new item for scrolling
+    if (i === 0) firstNewItem = actionEl;
+
+    // Trigger initial resize after DOM renders
+    setTimeout(autoResize, 10);
+  });
+
+  // Scroll to the first new item and focus it
+  if (firstNewItem) {
+    firstNewItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const textArea = firstNewItem.querySelector('.action-text');
+    if (textArea) {
+      setTimeout(() => textArea.focus(), 100);
+    }
+  }
+}
+
+/**
+ * Delete an item from the DOM
+ * @param {HTMLElement} itemEl - The item element to remove
+ */
+function deleteItem(itemEl) {
+  // Add fade-out animation
+  itemEl.style.transition = 'opacity 0.2s, transform 0.2s';
+  itemEl.style.opacity = '0';
+  itemEl.style.transform = 'translateX(-10px)';
+
+  setTimeout(() => {
+    itemEl.remove();
+  }, 200);
+}
+
+/**
+ * Add a new empty learning item manually
+ * Creates a new learning item that is checked by default and auto-focused
+ */
+function addNewLearning() {
+  const learningsList = document.getElementById('key-learnings-list');
+  if (!learningsList) return;
+
+  const existingCount = learningsList.querySelectorAll('.learning-item').length;
+  const index = existingCount;
+
+  const learningItem = document.createElement('div');
+  learningItem.className = 'learning-item new-item';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.id = `learning-${index}`;
+  checkbox.checked = true;
+  checkbox.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      selectedLearnings.add(index);
+    } else {
+      selectedLearnings.delete(index);
+    }
+  });
+
+  const textArea = document.createElement('textarea');
+  textArea.className = 'learning-text';
+  textArea.id = `learning-text-${index}`;
+  textArea.value = '';
+  textArea.rows = 1;
+  textArea.placeholder = 'Enter a new learning...';
+
+  // Auto-resize textarea
+  textArea.addEventListener('input', () => {
+    textArea.style.height = 'auto';
+    textArea.style.height = textArea.scrollHeight + 'px';
+  });
+
+  // Create delete button
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'delete-item-btn';
+  deleteBtn.title = 'Remove';
+  deleteBtn.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  `;
+  deleteBtn.addEventListener('click', () => deleteItem(learningItem));
+
+  learningItem.appendChild(checkbox);
+  learningItem.appendChild(textArea);
+  learningItem.appendChild(deleteBtn);
+  learningsList.appendChild(learningItem);
+
+  // Select the new learning
+  selectedLearnings.add(index);
+
+  // Scroll to and focus the new item
+  learningItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => textArea.focus(), 100);
+}
+
+/**
+ * Add a new empty action item manually
+ * Creates a new action item that is checked by default with default due date and auto-focused
+ */
+async function addNewActionItem() {
+  const actionSection = document.getElementById('action-items-section');
+  const actionList = document.getElementById('action-items-list');
+
+  if (!actionSection || !actionList) return;
+
+  // Make sure the action items section is visible
+  actionSection.style.display = 'block';
+
+  // Load setting for reminders checked by default
+  let remindersCheckedByDefault = true;
+  try {
+    const settings = await chrome.storage.sync.get(['remindersCheckedByDefault']);
+    remindersCheckedByDefault = settings.remindersCheckedByDefault !== false;
+  } catch (error) {
+    console.error('Error loading reminders setting:', error);
+  }
+
+  // Get default due date from dropdown
+  const defaultDueDays = parseInt(document.getElementById('default-due-days').value, 10) || 7;
+  const defaultDueDate = new Date();
+  defaultDueDate.setDate(defaultDueDate.getDate() + defaultDueDays);
+
+  const existingCount = actionList.querySelectorAll('.action-item').length;
+  const index = existingCount;
+
+  const actionEl = document.createElement('div');
+  actionEl.className = 'action-item new-item';
+
+  // Create checkbox
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.id = `action-${index}`;
+  checkbox.checked = remindersCheckedByDefault;
+
+  // Create content container
+  const contentDiv = document.createElement('div');
+  contentDiv.className = 'action-content';
+
+  // Create textarea for action text
+  const textArea = document.createElement('textarea');
+  textArea.className = 'action-text';
+  textArea.id = `action-text-${index}`;
+  textArea.value = '';
+  textArea.rows = 2;
+  textArea.placeholder = 'Enter a new action item...';
+
+  // Auto-resize textarea
+  const autoResize = () => {
+    textArea.style.height = 'auto';
+    textArea.style.height = textArea.scrollHeight + 'px';
+  };
+  textArea.addEventListener('input', autoResize);
+
+  // Create delete button
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'delete-item-btn';
+  deleteBtn.title = 'Remove';
+  deleteBtn.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="18" y1="6" x2="6" y2="18"></line>
+      <line x1="6" y1="6" x2="18" y2="18"></line>
+    </svg>
+  `;
+  deleteBtn.addEventListener('click', () => deleteItem(actionEl));
+
+  // Create due date container
+  const dueDiv = document.createElement('div');
+  dueDiv.className = 'action-due';
+
+  const dueLabel = document.createElement('label');
+  dueLabel.textContent = 'Due:';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.id = `action-due-${index}`;
+  dateInput.value = formatDateForInput(defaultDueDate);
+
+  dueDiv.appendChild(dueLabel);
+  dueDiv.appendChild(dateInput);
+
+  contentDiv.appendChild(textArea);
+  contentDiv.appendChild(dueDiv);
+
+  actionEl.appendChild(checkbox);
+  actionEl.appendChild(contentDiv);
+  actionEl.appendChild(deleteBtn);
+  actionList.appendChild(actionEl);
+
+  // Scroll to and focus the new item
+  actionEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => {
+    autoResize();
+    textArea.focus();
+  }, 100);
 }
 
 /**
