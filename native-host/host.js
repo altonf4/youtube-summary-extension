@@ -11,6 +11,7 @@ const claudeBridge = require('./claude-bridge');
 const appleNotes = require('./apple-notes');
 const appleReminders = require('./apple-reminders');
 const logger = require('./logger');
+const elevenlabs = require('./elevenlabs');
 
 // Native messaging protocol uses length-prefixed messages
 // Message format: [4 bytes: message length][message in JSON]
@@ -80,6 +81,14 @@ async function handleMessage(message) {
 
       case 'followUp':
         response = await handleFollowUp(message);
+        break;
+
+      case 'generateAudio':
+        response = await handleGenerateAudio(message);
+        break;
+
+      case 'listVoices':
+        response = await handleListVoices(message);
         break;
 
       default:
@@ -285,6 +294,64 @@ async function handleFollowUp(message) {
       success: false,
       error: error.message
     };
+  }
+}
+
+// Handle generate audio action
+async function handleGenerateAudio(message) {
+  const { text, voiceId, apiKey } = message;
+
+  if (!text) {
+    return { success: false, error: 'Text is required' };
+  }
+
+  if (!voiceId) {
+    return { success: false, error: 'Voice ID is required' };
+  }
+
+  if (!apiKey) {
+    return { success: false, error: 'API key is required' };
+  }
+
+  try {
+    logDebug(`Generating audio: ${text.length} chars with voice ${voiceId}`);
+    const result = await elevenlabs.generateSpeech(text, voiceId, apiKey);
+
+    if (result.success) {
+      logDebug('Audio generated successfully');
+    } else {
+      logDebug(`Audio generation failed: ${result.error}`);
+    }
+
+    return result;
+  } catch (error) {
+    logDebug(`Error generating audio: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+// Handle list voices action
+async function handleListVoices(message) {
+  const { apiKey } = message;
+
+  if (!apiKey) {
+    return { success: false, error: 'API key is required' };
+  }
+
+  try {
+    logDebug('Fetching ElevenLabs voices...');
+    const result = await elevenlabs.listVoices(apiKey);
+
+    if (result.success) {
+      logDebug(`Found ${result.voices.length} voices`);
+    } else {
+      logDebug(`Failed to fetch voices: ${result.error}`);
+    }
+
+    return result;
+  } catch (error) {
+    logDebug(`Error fetching voices: ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
 
