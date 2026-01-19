@@ -236,8 +236,9 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       transition: transform 0.15s, box-shadow 0.15s;
+      opacity: 1;
     }
 
     #youtube-summary-float-btn:hover {
@@ -534,13 +535,29 @@ function createFloatingButton() {
   // Apply state classes
   updateFloatingButtonState();
 
-  // Load saved position
+  // Load saved position (with validation to ensure it's on-screen)
   const savedPos = getSavedButtonPosition();
   if (savedPos) {
-    floatingButton.style.top = savedPos.top;
-    floatingButton.style.right = 'auto';
-    floatingButton.style.left = savedPos.left;
+    const savedTop = parseFloat(savedPos.top);
+    const savedLeft = parseFloat(savedPos.left);
+    const btnSize = 44;
+
+    // Validate position is within viewport
+    if (!isNaN(savedTop) && !isNaN(savedLeft) &&
+        savedTop >= 0 && savedTop <= window.innerHeight - btnSize &&
+        savedLeft >= 0 && savedLeft <= window.innerWidth - btnSize) {
+      floatingButton.style.top = savedPos.top;
+      floatingButton.style.right = 'auto';
+      floatingButton.style.left = savedPos.left;
+    } else {
+      // Clear invalid saved position
+      localStorage.removeItem('youtube-summary-btn-position');
+    }
   }
+
+  // Ensure visibility (override any animation issues)
+  floatingButton.style.setProperty('opacity', '1', 'important');
+  floatingButton.style.setProperty('animation', 'none', 'important');
 
   // Make draggable
   makeButtonDraggable(floatingButton);
