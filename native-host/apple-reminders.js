@@ -187,5 +187,7 @@ function escapeForAppleScript(str) {
 
 module.exports = {
   createReminders,
-  listReminderLists
+  listReminderLists,
+  // Exported for testing
+  escapeForAppleScript
 };

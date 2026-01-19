@@ -51,4 +51,4 @@ function getLogPath() {
   return LOG_FILE;
 }
 
-module.exports = { log, getLogPath, LOG_FILE };
+module.exports = { log, getLogPath, LOG_FILE, rotateIfNeeded };

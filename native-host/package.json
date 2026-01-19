@@ -4,7 +4,7 @@
   "description": "Native messaging host for YouTube Summary Extension",
   "main": "host.js",
   "scripts": {
-    "test": "node host.js"
+    "test": "jest --coverage"
   },
   "keywords": [
     "youtube",
@@ -15,6 +15,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {},
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
   "bin": {
     "youtube-summary-host": "./host.js"
   }

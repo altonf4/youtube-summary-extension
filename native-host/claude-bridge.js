@@ -548,5 +548,11 @@ function parseFollowUpResponse(response) {
 
 module.exports = {
   generateSummary,
-  generateFollowUp
+  generateFollowUp,
+  // Exported for testing
+  createPrompt,
+  parseResponse,
+  createFollowUpPrompt,
+  parseFollowUpResponse,
+  DEFAULT_INSTRUCTIONS
 };

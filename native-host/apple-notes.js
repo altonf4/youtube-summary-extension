@@ -280,5 +280,10 @@ async function listFolders() {
 module.exports = {
   saveNote,
   ensureFolder,
-  listFolders
+  listFolders,
+  // Exported for testing
+  formatNoteContent,
+  escapeForAppleScript,
+  escapeHtml,
+  formatDisplayDate
 };
