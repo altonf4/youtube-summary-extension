@@ -28,7 +28,7 @@ async function generateSpeech(text, voiceId, apiKey) {
   return new Promise((resolve) => {
     const postData = JSON.stringify({
       text: truncatedText,
-      model_id: 'eleven_monolingual_v1',
+      model_id: 'eleven_turbo_v2_5',
       voice_settings: {
         stability: 0.5,
         similarity_boost: 0.75
@@ -80,9 +80,9 @@ async function generateSpeech(text, voiceId, apiKey) {
       resolve({ success: false, error: `Network error: ${error.message}` });
     });
 
-    req.setTimeout(60000, () => {
+    req.setTimeout(120000, () => {
       req.destroy();
-      resolve({ success: false, error: 'Request timed out' });
+      resolve({ success: false, error: 'Request timed out (2 minutes)' });
     });
 
     req.write(postData);
