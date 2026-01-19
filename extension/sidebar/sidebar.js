@@ -11,6 +11,11 @@ let cachedViewerComments = []; // Store top viewer comments
 let searchMatches = []; // Store search match positions
 let currentMatchIndex = -1; // Current highlighted match index
 
+// Audio state
+let audioElement = null;
+let cachedAudioData = null;
+let isAudioLoading = false;
+
 // UI Elements
 const videoTitle = document.getElementById('video-title');
 const generateBtn = document.getElementById('generate-btn');
@@ -62,6 +67,15 @@ function init() {
 
   // Summary toggle button
   document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
+
+  // Audio button
+  const audioBtn = document.getElementById('audio-btn');
+  if (audioBtn) {
+    audioBtn.addEventListener('click', handleAudioClick);
+  }
+
+  // Check audio settings availability
+  checkAudioAvailability();
 
   // Select/Unselect All buttons
   document.getElementById('toggle-all-learnings').addEventListener('click', () => toggleAllCheckboxes('learnings'));
@@ -1046,6 +1060,7 @@ function handleRetry() {
 
 // Handle new summary
 function handleNewSummary() {
+  clearCachedAudio();
   currentSummary = null;
   currentNoteId = null; // Reset note ID for new summary
   currentReminderIds = []; // Reset reminder IDs for new summary
@@ -1801,6 +1816,272 @@ function highlightCurrentMatch() {
   if (searchResultsCount && searchMatches.length > 0) {
     searchResultsCount.textContent = `${currentMatchIndex + 1}/${searchMatches.length}`;
   }
+}
+
+// ============================================
+// Audio Narration Functions
+// ============================================
+
+/**
+ * Check if audio narration is available (API key configured)
+ */
+async function checkAudioAvailability() {
+  const audioBtn = document.getElementById('audio-btn');
+  if (!audioBtn) return;
+
+  try {
+    const settings = await chrome.storage.sync.get(['elevenlabsApiKey', 'elevenlabsVoiceId']);
+    if (settings.elevenlabsApiKey && settings.elevenlabsVoiceId) {
+      audioBtn.disabled = false;
+      audioBtn.title = 'Generate audio narration';
+    } else {
+      audioBtn.disabled = true;
+      audioBtn.title = 'Configure ElevenLabs in settings';
+    }
+  } catch (error) {
+    console.error('Error checking audio availability:', error);
+    audioBtn.disabled = true;
+  }
+}
+
+/**
+ * Handle audio button click
+ */
+async function handleAudioClick() {
+  const audioBtn = document.getElementById('audio-btn');
+  if (!audioBtn) return;
+
+  // If playing, stop
+  if (audioElement && !audioElement.paused) {
+    stopAudio();
+    return;
+  }
+
+  // If we have cached audio, play it
+  if (cachedAudioData) {
+    playAudio(cachedAudioData);
+    return;
+  }
+
+  // Generate new audio
+  await generateAudio();
+}
+
+/**
+ * Generate audio from summary content
+ */
+async function generateAudio() {
+  const audioBtn = document.getElementById('audio-btn');
+  if (!audioBtn || isAudioLoading) return;
+
+  isAudioLoading = true;
+  audioBtn.classList.add('loading');
+  audioBtn.disabled = true;
+
+  // Remove any previous error
+  const existingError = document.querySelector('.audio-error');
+  if (existingError) existingError.remove();
+
+  try {
+    // Get settings
+    const settings = await chrome.storage.sync.get([
+      'elevenlabsApiKey',
+      'elevenlabsVoiceId',
+      'audioIncludeSummary',
+      'audioIncludeLearnings',
+      'audioIncludeActions'
+    ]);
+
+    if (!settings.elevenlabsApiKey || !settings.elevenlabsVoiceId) {
+      throw new Error('Please configure ElevenLabs in settings');
+    }
+
+    // Build text content based on settings
+    const textParts = [];
+
+    if (settings.audioIncludeSummary !== false) {
+      const summaryText = document.getElementById('summary-text');
+      if (summaryText && summaryText.innerText.trim()) {
+        textParts.push(summaryText.innerText.trim());
+      }
+    }
+
+    if (settings.audioIncludeLearnings !== false) {
+      const learnings = getEditedLearnings();
+      if (learnings.length > 0) {
+        textParts.push('Key Learnings:');
+        learnings.forEach((learning, i) => {
+          textParts.push(`${i + 1}. ${learning}`);
+        });
+      }
+    }
+
+    if (settings.audioIncludeActions === true) {
+      const actions = getSelectedActionItems();
+      if (actions.length > 0) {
+        textParts.push('Action Items:');
+        actions.forEach((action, i) => {
+          textParts.push(`${i + 1}. ${action.text}`);
+        });
+      }
+    }
+
+    const text = textParts.join('\n\n');
+
+    if (!text) {
+      throw new Error('No content to narrate');
+    }
+
+    // Call native host
+    const response = await sendNativeMessage({
+      action: 'generateAudio',
+      text: text,
+      voiceId: settings.elevenlabsVoiceId,
+      apiKey: settings.elevenlabsApiKey
+    });
+
+    if (response.success && response.audio) {
+      cachedAudioData = response.audio;
+      playAudio(response.audio);
+    } else {
+      throw new Error(response.error || 'Failed to generate audio');
+    }
+
+  } catch (error) {
+    console.error('Error generating audio:', error);
+    showAudioError(error.message);
+  } finally {
+    isAudioLoading = false;
+    audioBtn.classList.remove('loading');
+    audioBtn.disabled = false;
+  }
+}
+
+/**
+ * Play audio from base64 data
+ * @param {string} base64Audio - Base64 encoded MP3
+ */
+function playAudio(base64Audio) {
+  const audioBtn = document.getElementById('audio-btn');
+  const audioPlayer = document.getElementById('audio-player');
+  const progressBar = document.getElementById('audio-progress-bar');
+  const audioTime = document.getElementById('audio-time');
+
+  // Stop any existing audio
+  if (audioElement) {
+    audioElement.pause();
+    audioElement = null;
+  }
+
+  // Create audio element
+  audioElement = new Audio(`data:audio/mpeg;base64,${base64Audio}`);
+
+  // Show player
+  if (audioPlayer) audioPlayer.style.display = 'flex';
+  if (audioBtn) audioBtn.classList.add('playing');
+
+  // Update progress
+  audioElement.addEventListener('timeupdate', () => {
+    if (audioElement.duration) {
+      const progress = (audioElement.currentTime / audioElement.duration) * 100;
+      if (progressBar) progressBar.style.width = `${progress}%`;
+      if (audioTime) audioTime.textContent = formatAudioTime(audioElement.currentTime);
+    }
+  });
+
+  // Handle end
+  audioElement.addEventListener('ended', () => {
+    stopAudio();
+  });
+
+  // Handle errors
+  audioElement.addEventListener('error', (e) => {
+    console.error('Audio playback error:', e);
+    stopAudio();
+    showAudioError('Playback error');
+  });
+
+  // Click on progress bar to seek
+  const progressContainer = document.querySelector('.audio-progress-container');
+  if (progressContainer) {
+    progressContainer.addEventListener('click', (e) => {
+      if (!audioElement || !audioElement.duration) return;
+      const rect = progressContainer.getBoundingClientRect();
+      const percent = (e.clientX - rect.left) / rect.width;
+      audioElement.currentTime = percent * audioElement.duration;
+    });
+  }
+
+  // Play
+  audioElement.play().catch(error => {
+    console.error('Failed to play audio:', error);
+    stopAudio();
+    showAudioError('Could not play audio');
+  });
+}
+
+/**
+ * Stop audio playback
+ */
+function stopAudio() {
+  const audioBtn = document.getElementById('audio-btn');
+  const audioPlayer = document.getElementById('audio-player');
+  const progressBar = document.getElementById('audio-progress-bar');
+
+  if (audioElement) {
+    audioElement.pause();
+    audioElement = null;
+  }
+
+  if (audioBtn) audioBtn.classList.remove('playing');
+  if (audioPlayer) audioPlayer.style.display = 'none';
+  if (progressBar) progressBar.style.width = '0%';
+}
+
+/**
+ * Format seconds to mm:ss
+ * @param {number} seconds
+ * @returns {string}
+ */
+function formatAudioTime(seconds) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Show audio error message
+ * @param {string} message
+ */
+function showAudioError(message) {
+  // Remove existing error
+  const existing = document.querySelector('.audio-error');
+  if (existing) existing.remove();
+
+  // Create error element
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'audio-error';
+  errorDiv.textContent = message;
+
+  // Insert after summary header
+  const summaryContent = document.querySelector('.summary-content');
+  const summaryHeader = document.querySelector('.summary-header');
+  if (summaryContent && summaryHeader) {
+    summaryHeader.insertAdjacentElement('afterend', errorDiv);
+  }
+
+  // Auto-remove after 5 seconds
+  setTimeout(() => {
+    if (errorDiv.parentNode) errorDiv.remove();
+  }, 5000);
+}
+
+/**
+ * Clear cached audio when summary changes
+ */
+function clearCachedAudio() {
+  cachedAudioData = null;
+  stopAudio();
 }
 
 // Initialize on load
