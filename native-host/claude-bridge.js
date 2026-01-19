@@ -537,8 +537,12 @@ function parseFollowUpResponse(response) {
       const parsed = JSON.parse(jsonStr);
       if (parsed.items && Array.isArray(parsed.items)) {
         return {
-          insights: parsed.items.filter(i => i.type === 'insight').map(i => i.text),
-          actions: parsed.items.filter(i => i.type === 'action').map(i => i.text)
+          insights: parsed.items
+            .filter(i => i.type === 'insight' && typeof i.text === 'string')
+            .map(i => i.text),
+          actions: parsed.items
+            .filter(i => i.type === 'action' && typeof i.text === 'string')
+            .map(i => i.text)
         };
       }
     } catch {

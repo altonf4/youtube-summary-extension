@@ -440,6 +440,29 @@ Hope this helps!`;
         expect(result.insights).toHaveLength(0);
         expect(result.actions).toHaveLength(0);
       });
+
+      it('filters out malformed items missing text field', () => {
+        const response = `{
+          "items": [
+            { "type": "insight", "text": "Valid insight" },
+            { "type": "insight" },
+            { "type": "action", "text": "Valid action" },
+            { "type": "action" },
+            { "type": "insight", "text": null },
+            { "type": "action", "text": 123 }
+          ]
+        }`;
+
+        const result = parseFollowUpResponse(response);
+
+        expect(result.insights).toHaveLength(1);
+        expect(result.insights[0]).toBe('Valid insight');
+        expect(result.actions).toHaveLength(1);
+        expect(result.actions[0]).toBe('Valid action');
+        // Ensure no undefined values in arrays
+        expect(result.insights).not.toContain(undefined);
+        expect(result.actions).not.toContain(undefined);
+      });
     });
 
     describe('fallback to plain text', () => {
