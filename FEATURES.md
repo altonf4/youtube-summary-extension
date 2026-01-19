@@ -372,11 +372,12 @@ sidebar.js (updateProgressUI)
 **Request:** Improve the "Extract More" feature with: (1) tooltip explaining the feature, (2) dynamic AI decision making to classify items as insights or action items based on the query, (3) ability to manually add/remove items.
 
 **Implementation:**
-- **Tooltip** (`sidebar.html`, `styles.css`):
-  - Info icon (ⓘ) added next to "Extract More" header
-  - CSS-only tooltip on hover: "Ask Claude to extract additional insights or action items from the video based on your question."
-  - Uses `data-tooltip` attribute with `::after` pseudo-element
-  - Smooth fade-in transition, proper word wrapping with max-width
+- **Example Chips** (`sidebar.html`, `sidebar.js`, `styles.css`):
+  - Clickable example prompts shown below "Extract More" header
+  - Four pre-built examples: "Tools mentioned", "Statistics", "Action items", "Key quotes"
+  - Clicking a chip auto-fills the textarea with a relevant question
+  - Pill-shaped buttons with hover effects (green highlight)
+  - More discoverable than a hidden tooltip
 - **Dynamic AI Response Routing** (`claude-bridge.js`, `sidebar.js`):
   - Updated `createFollowUpPrompt()` to request structured JSON output
   - Claude classifies each item as `insight` or `action` based on query intent
