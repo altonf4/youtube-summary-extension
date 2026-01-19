@@ -74,6 +74,55 @@
         </div>
       </section>
 
+      <!-- Audio Narration Settings -->
+      <section class="setting-section">
+        <h2>Audio Narration</h2>
+        <p class="section-description">
+          Generate audio versions of summaries using ElevenLabs Text-to-Speech.
+        </p>
+
+        <div class="form-group">
+          <label for="elevenlabs-api-key">ElevenLabs API Key</label>
+          <div class="password-input-container">
+            <input type="password" id="elevenlabs-api-key" placeholder="Enter your API key...">
+            <button type="button" id="toggle-api-key" class="toggle-visibility-btn" title="Show/hide API key">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <p class="setting-hint">Get your API key from <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank">elevenlabs.io</a></p>
+        </div>
+
+        <div class="form-group">
+          <label for="elevenlabs-voice">Voice</label>
+          <select id="elevenlabs-voice" disabled>
+            <option value="">Enter API key to load voices</option>
+          </select>
+          <p class="setting-hint" id="voice-status"></p>
+        </div>
+
+        <div class="form-group">
+          <label>Audio Content</label>
+          <p class="setting-hint" style="margin-bottom: 12px; margin-left: 0;">Select which sections to include in audio narration:</p>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="audio-include-summary" checked>
+              <span>Summary</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="audio-include-learnings" checked>
+              <span>Key Learnings</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="audio-include-actions">
+              <span>Action Items</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
       <!-- Preview -->
       <section class="setting-section">
         <h2>How it works</h2>
