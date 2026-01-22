@@ -24,23 +24,29 @@ Generate AI summaries of YouTube videos using your Claude Code subscription and 
 If you don't have Claude Code installed:
 
 ```bash
-# Install via npm (recommended)
-npm install -g claude-code
+# macOS/Linux (Recommended)
+curl -fsSL https://claude.ai/install.sh | bash
 
-# Or follow instructions at: https://code.claude.com
+# Or via Homebrew (macOS/Linux)
+brew install --cask claude-code
+
+# Or via npm (deprecated but still works)
+npm install -g @anthropic-ai/claude-code
 ```
+
+For more details, see: https://docs.anthropic.com/en/docs/claude-code
 
 Verify installation:
 ```bash
-claude-code --version
+claude --version
 ```
 
 ## Installation
 
-### Step 1: Clone or Download
+### Step 1: Clone the Repository
 
 ```bash
-# Navigate to where you downloaded this extension
+git clone https://github.com/altfong/youtube-summary-extension.git
 cd youtube-summary-extension
 ```
 
@@ -188,9 +194,9 @@ youtube-summary-extension/
 **Error**: "Claude Code CLI not found"
 
 **Solutions**:
-1. Verify Claude Code is installed: `which claude-code`
+1. Verify Claude Code is installed: `which claude`
 2. Ensure it's in your PATH
-3. Try running `claude-code` directly in terminal
+3. Try running `claude` directly in terminal
 4. Reinstall Claude Code if needed
 
 ### No Transcript Available
@@ -226,7 +232,7 @@ youtube-summary-extension/
 **Solutions**:
 - Wait up to 2 minutes (timeout limit)
 - Try with a shorter video first
-- Check Claude Code is working: `echo "Hello" | claude-code`
+- Check Claude Code is working: `echo "Hello" | claude`
 
 ### Check Logs
 
