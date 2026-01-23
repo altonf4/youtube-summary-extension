@@ -11,6 +11,10 @@ Generate AI summaries of YouTube videos using your Claude Code subscription and 
 - **YouTube Transcript**: Automatically fetches video transcripts
 - **Beautiful UI**: Clean sidebar interface on YouTube
 
+## 📖 User Guide
+
+For detailed usage instructions with screenshots, see the **[Wiki](../../wiki)**.
+
 ## Prerequisites
 
 - **macOS** (for Apple Notes integration)
