@@ -28,15 +28,13 @@ If you dismiss the popup (click X), a small floating button appears. You can:
 
 ### 1. Review the Transcript Preview
 
-Before generating, you can preview the video's transcript:
+Before generating, you can preview the video's transcript in the sidebar:
 
-![Transcript Preview](images/transcript-preview.png)
+![Sidebar with Transcript](images/sidebar-generate.png)
 
 ### 2. Click "Generate Summary"
 
-Click the blue **Generate Summary** button to start analysis.
-
-![Generate Button](images/generate-button.png)
+Click the orange **Generate Summary** button to start analysis.
 
 ### 3. Watch the Progress
 
@@ -76,14 +74,11 @@ Click anywhere in the summary text to edit it.
 - Click the **×** button to delete an item
 - Click **+ Add Learning** to add your own
 
-![Edit Learnings](images/edit-learnings.png)
-
 ### Edit Action Items
 - Edit task text by clicking on it
 - Change due dates with the date picker
 - Checked items are saved to Apple Reminders
 
-![Action Items](images/action-items.png)
 
 ## Extract More Information
 
@@ -105,7 +100,6 @@ What were the main criticisms discussed?
 Summarize the technical implementation details.
 ```
 
-![Extract More](images/extract-more.png)
 
 New items are automatically added to Key Learnings or Action Items based on their type.
 
@@ -118,7 +112,6 @@ After generating a summary, you can search the full transcript:
 3. Current match is highlighted in orange
 4. Use **↑/↓** buttons or **Enter/Shift+Enter** to navigate
 
-![Transcript Search](images/transcript-search.png)
 
 Click the **copy** button to copy the entire transcript.
 
@@ -131,7 +124,6 @@ Click the **copy** button to copy the entire transcript.
 | **Copy to Clipboard** | Copies formatted Markdown to clipboard |
 | **Download .md** | Downloads as a Markdown file |
 
-![Quick Export](images/quick-export.png)
 
 ### Save to Apple Notes
 
@@ -141,11 +133,10 @@ Click the **copy** button to copy the entire transcript.
 
 2. Click **Save to Apple Notes**
 
-![Save to Notes](images/save-to-notes.png)
+![Export Section](images/export-section.png)
 
 3. View the success message
 
-![Save Success](images/save-success.png)
 
 ### What Gets Saved
 
@@ -158,7 +149,6 @@ Your Apple Note includes:
 - Relevant links
 - Your custom notes
 
-![Apple Notes Result](images/apple-notes-result.png)
 
 ### Apple Reminders
 
@@ -167,7 +157,6 @@ Checked action items are automatically synced to Apple Reminders:
 - Includes the video title and URL in the note
 - Due dates are preserved
 
-![Apple Reminders](images/apple-reminders.png)
 
 ## Audio Narration
 
@@ -181,7 +170,6 @@ Listen to your summary with ElevenLabs text-to-speech:
    - **Progress bar** (click to seek)
    - **Speed** button (1x, 1.5x, 2x)
 
-![Audio Player](images/audio-player.png)
 
 ## Tips & Best Practices
 

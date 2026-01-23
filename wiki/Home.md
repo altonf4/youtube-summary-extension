@@ -49,10 +49,15 @@ The extension uses Chrome's Native Messaging API to communicate with a local Nod
 
 ## Screenshots
 
-### Generate Summary
-Open the sidebar to see the transcript preview and generate a summary.
+### Popup Banner
+When you visit a YouTube video, a popup appears offering to summarize it.
 
-![Generate Summary](images/sidebar-generate.png)
+![Popup Banner](images/popup-banner.png)
+
+### Sidebar with Transcript
+Open the sidebar to preview the transcript and generate a summary.
+
+![Sidebar Generate](images/sidebar-generate.png)
 
 ### Progress Tracking
 Watch real-time progress as Claude analyzes the video.
@@ -60,7 +65,7 @@ Watch real-time progress as Claude analyzes the video.
 ![Progress Stages](images/progress-stages.png)
 
 ### Summary Results
-View the summary, key learnings, and use "Extract More" to ask follow-up questions.
+View the summary, key learnings, and use "Extract More" for follow-up questions.
 
 ![Summary Results](images/summary-results.png)
 

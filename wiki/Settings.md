@@ -6,7 +6,6 @@ Customize how Claude analyzes your videos and configure audio narration.
 
 Click the **gear icon** in the sidebar header to open Settings.
 
-![Settings Button](images/settings-button.png)
 
 ## Analysis Instructions
 
@@ -14,7 +13,7 @@ Click the **gear icon** in the sidebar header to open Settings.
 
 Tell Claude what to focus on when summarizing videos. Your instructions are combined with a system prompt that ensures consistent output format.
 
-![Analysis Instructions](images/settings-analysis.png)
+![Settings Page](images/settings-page.png)
 
 ### Available Variables
 
@@ -101,7 +100,6 @@ Control whether action items are pre-selected:
 | **Checked (default)** | Action items are selected by default and saved to Reminders |
 | **Unchecked** | Action items are unchecked; manually select which to save |
 
-![Reminders Setting](images/settings-reminders.png)
 
 This is useful if you prefer to review action items before committing to them.
 
@@ -116,7 +114,6 @@ Configure ElevenLabs text-to-speech for audio summaries.
 3. Paste it in the API Key field
 4. Click the **eye icon** to show/hide the key
 
-![API Key Setting](images/settings-api-key.png)
 
 ### Voice Selection
 
@@ -127,7 +124,6 @@ After entering your API key:
 3. Select your preferred voice
 4. The selection is saved automatically
 
-![Voice Selection](images/settings-voice.png)
 
 ### Audio Content
 
@@ -139,13 +135,11 @@ Choose which sections to include in audio:
 | **Key Learnings** | ✓ On | All extracted learnings (numbered) |
 | **Action Items** | Off | Task list with due dates |
 
-![Audio Content](images/settings-audio-content.png)
 
 ## Saving Settings
 
 Click **Save Settings** to apply your changes.
 
-![Save Settings](images/settings-save.png)
 
 Settings are synced across devices via Chrome Sync.
 
