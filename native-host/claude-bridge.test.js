@@ -5,10 +5,14 @@
 
 const {
   createPrompt,
+  createArticlePrompt,
+  createSelectionPrompt,
   parseResponse,
   createFollowUpPrompt,
   parseFollowUpResponse,
   parseAsPlainText,
+  buildOutputFormat,
+  getParseLabels,
   DEFAULT_INSTRUCTIONS
 } = require('./claude-bridge');
 
@@ -613,6 +617,250 @@ Here are the insights:
 
       expect(result.length).toBeGreaterThan(1);
       expect(result.length).toBeLessThanOrEqual(5);
+    });
+  });
+
+  describe('createArticlePrompt', () => {
+    it('creates a prompt for article content', () => {
+      const prompt = createArticlePrompt(
+        'Test Article Title',
+        'This is the article body text.',
+        'A short description',
+        [],
+        null,
+        { author: 'John Doe', siteName: 'Example Blog', publishDate: '2025-01-15', contentType: 'article' }
+      );
+
+      expect(prompt).toContain('web article');
+      expect(prompt).toContain('Test Article Title');
+      expect(prompt).toContain('article body text');
+      expect(prompt).toContain('John Doe');
+      expect(prompt).toContain('Example Blog');
+      expect(prompt).toContain('SUMMARY:');
+      expect(prompt).toContain('KEY LEARNINGS:');
+      expect(prompt).toContain('ACTION ITEMS:');
+    });
+
+    it('uses default instructions when none provided', () => {
+      const prompt = createArticlePrompt('Title', 'Body text');
+      expect(prompt).toContain(DEFAULT_INSTRUCTIONS);
+    });
+
+    it('uses custom instructions when provided', () => {
+      const prompt = createArticlePrompt('Title', 'Body', '', [], 'Focus on data points');
+      expect(prompt).toContain('Focus on data points');
+      expect(prompt).not.toContain(DEFAULT_INSTRUCTIONS);
+    });
+
+    it('truncates long article text', () => {
+      const longText = 'a'.repeat(60000);
+      const prompt = createArticlePrompt('Title', longText);
+      expect(prompt).toContain('[truncated]');
+      expect(prompt.length).toBeLessThan(60000);
+    });
+
+    it('creates webpage prompt when contentType is webpage', () => {
+      const prompt = createArticlePrompt(
+        'Some Page',
+        'Page content here',
+        '',
+        [],
+        null,
+        { contentType: 'webpage' }
+      );
+      expect(prompt).toContain('web page');
+    });
+
+    it('includes links when provided', () => {
+      const links = [
+        { text: 'Resource 1', url: 'https://example.com/1' },
+        { text: 'Resource 2', url: 'https://example.com/2' }
+      ];
+      const prompt = createArticlePrompt('Title', 'Body', '', links);
+      expect(prompt).toContain('Resource 1');
+      expect(prompt).toContain('https://example.com/1');
+    });
+  });
+
+  describe('createSelectionPrompt', () => {
+    it('creates a prompt for selected text', () => {
+      const prompt = createSelectionPrompt('Page Title', 'This is the selected text content.');
+
+      expect(prompt).toContain('text selection');
+      expect(prompt).toContain('Page Title');
+      expect(prompt).toContain('selected text content');
+      expect(prompt).toContain('SUMMARY:');
+      expect(prompt).toContain('KEY LEARNINGS:');
+    });
+
+    it('uses custom instructions when provided', () => {
+      const prompt = createSelectionPrompt('Page', 'Selected text', 'Explain this in simple terms');
+      expect(prompt).toContain('Explain this in simple terms');
+    });
+
+    it('truncates long selections', () => {
+      const longText = 'word '.repeat(15000);
+      const prompt = createSelectionPrompt('Page', longText);
+      expect(prompt).toContain('[truncated]');
+    });
+  });
+
+  describe('buildOutputFormat', () => {
+    it('returns null when no template sections provided', () => {
+      expect(buildOutputFormat(null)).toBeNull();
+      expect(buildOutputFormat([])).toBeNull();
+    });
+
+    it('builds format from enabled sections only', () => {
+      const sections = [
+        { id: 'summary', label: 'Summary', enabled: true, format: 'paragraphs' },
+        { id: 'key_learnings', label: 'Key Points', enabled: true, format: 'bullets' },
+        { id: 'action_items', label: 'Action Items', enabled: false, format: 'bullets' }
+      ];
+
+      const result = buildOutputFormat(sections);
+      expect(result).not.toBeNull();
+      expect(result.formatInstructions).toContain('SUMMARY:');
+      expect(result.formatInstructions).toContain('KEY POINTS:');
+      expect(result.formatInstructions).not.toContain('ACTION ITEMS:');
+      expect(result.sectionHeaders).toEqual(['SUMMARY', 'KEY POINTS']);
+    });
+
+    it('includes creator additions when hasCreatorComments is true', () => {
+      const sections = [
+        { id: 'summary', label: 'Summary', enabled: true, format: 'paragraphs' },
+        { id: 'creator_additions', label: 'Creator Notes', enabled: true, format: 'bullets' }
+      ];
+
+      const result = buildOutputFormat(sections, { hasCreatorComments: true });
+      expect(result.formatInstructions).toContain('CREATOR NOTES:');
+    });
+
+    it('includes links section when hasLinks is true', () => {
+      const sections = [
+        { id: 'summary', label: 'Summary', enabled: true, format: 'paragraphs' },
+        { id: 'relevant_links', label: 'Useful Links', enabled: true, format: 'bullets' }
+      ];
+
+      const result = buildOutputFormat(sections, { hasLinks: true });
+      expect(result.formatInstructions).toContain('USEFUL LINKS:');
+      expect(result.formatInstructions).toContain('Review the links');
+    });
+  });
+
+  describe('getParseLabels', () => {
+    it('returns defaults when no template sections', () => {
+      const labels = getParseLabels(null);
+      expect(labels.summary).toBe('SUMMARY');
+      expect(labels.keyLearnings).toBe('KEY LEARNINGS');
+      expect(labels.actionItems).toBe('ACTION ITEMS');
+    });
+
+    it('maps custom labels from template sections', () => {
+      const sections = [
+        { id: 'summary', label: 'TL;DR', enabled: true },
+        { id: 'key_learnings', label: 'Key Points', enabled: true },
+        { id: 'action_items', label: 'Next Steps', enabled: true },
+        { id: 'relevant_links', label: 'Resources', enabled: true }
+      ];
+
+      const labels = getParseLabels(sections);
+      expect(labels.summary).toBe('TL;DR');
+      expect(labels.keyLearnings).toBe('KEY POINTS');
+      expect(labels.actionItems).toBe('NEXT STEPS');
+      expect(labels.relevantLinks).toBe('RESOURCES');
+    });
+
+    it('falls back to defaults for missing sections', () => {
+      const sections = [
+        { id: 'summary', label: 'Overview', enabled: true }
+      ];
+
+      const labels = getParseLabels(sections);
+      expect(labels.summary).toBe('OVERVIEW');
+      expect(labels.keyLearnings).toBe('KEY LEARNINGS'); // default
+      expect(labels.actionItems).toBe('ACTION ITEMS'); // default
+    });
+  });
+
+  describe('parseResponse with custom labels', () => {
+    it('parses response with custom section labels', () => {
+      const response = `
+TL;DR:
+This is a brief overview of the article.
+
+KEY POINTS:
+- First point
+- Second point
+
+NEXT STEPS:
+- Do thing A
+- Do thing B
+
+RESOURCES:
+- 1. Helpful docs
+      `;
+
+      const templateSections = [
+        { id: 'summary', label: 'TL;DR', enabled: true },
+        { id: 'key_learnings', label: 'Key Points', enabled: true },
+        { id: 'action_items', label: 'Next Steps', enabled: true },
+        { id: 'relevant_links', label: 'Resources', enabled: true }
+      ];
+
+      const descriptionLinks = [
+        { text: 'Docs', url: 'https://docs.example.com' }
+      ];
+
+      const result = parseResponse(response, descriptionLinks, templateSections);
+      expect(result.summary).toBe('This is a brief overview of the article.');
+      expect(result.keyLearnings).toEqual(['First point', 'Second point']);
+      expect(result.actionItems).toEqual(['Do thing A', 'Do thing B']);
+      expect(result.relevantLinks).toHaveLength(1);
+      expect(result.relevantLinks[0].url).toBe('https://docs.example.com');
+    });
+
+    it('still works with default labels when no template provided', () => {
+      const response = `
+SUMMARY:
+Normal summary.
+
+KEY LEARNINGS:
+- Learning one
+- Learning two
+
+ACTION ITEMS:
+- Action one
+
+RELEVANT LINKS:
+(No links provided)
+      `;
+
+      const result = parseResponse(response, []);
+      expect(result.summary).toBe('Normal summary.');
+      expect(result.keyLearnings).toEqual(['Learning one', 'Learning two']);
+      expect(result.actionItems).toEqual(['Action one']);
+    });
+  });
+
+  describe('createPrompt with template sections', () => {
+    it('uses template-driven format when sections provided', () => {
+      const sections = [
+        { id: 'summary', label: 'Overview', enabled: true, format: 'paragraphs' },
+        { id: 'key_learnings', label: 'Takeaways', enabled: true, format: 'bullets' }
+      ];
+
+      const prompt = createPrompt('Test Video', 'Transcript', '', [], [], [], null, { templateSections: sections });
+      expect(prompt).toContain('OVERVIEW:');
+      expect(prompt).toContain('TAKEAWAYS:');
+      // Should NOT contain default hardcoded headers
+      expect(prompt).not.toContain('KEY LEARNINGS:');
+    });
+
+    it('falls back to default format when no sections provided', () => {
+      const prompt = createPrompt('Test Video', 'Transcript');
+      expect(prompt).toContain('KEY LEARNINGS:');
+      expect(prompt).toContain('ACTION ITEMS:');
     });
   });
 });

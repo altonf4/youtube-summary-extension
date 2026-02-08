@@ -1,19 +1,34 @@
-# AGENTS.md - Development Guide for YouTube Summary Extension
+# AGENTS.md - Development Guide for AI Summary Extension
 
 This document is intended for AI agents and developers working on this codebase. It explains the architecture, key components, and how everything fits together.
 
 ## Project Overview
 
-This is a Chrome extension that generates AI summaries of YouTube videos using Claude CLI and saves them to Apple Notes. It uses Chrome's Native Messaging API to communicate between the browser extension and local Node.js processes.
+This is a Chrome extension that generates AI summaries of **any web content** — YouTube videos, articles, blog posts, selected text, and videos with captions — using Claude and saves them to Apple Notes. It uses Chrome's Native Messaging API to communicate between the browser extension and local Node.js processes.
 
 ## Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        CHROME BROWSER                                │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐ │
-│  │   content.js    │◄──►│   sidebar.js    │◄──►│  background.js  │ │
-│  │  (YouTube page) │    │   (Sidebar UI)  │    │(Service Worker) │ │
+│                                                                      │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │              Content Scripts (all pages)                      │    │
+│  │                                                               │    │
+│  │  ┌──────────────────┐  ┌─────────────────────────────────┐  │    │
+│  │  │ content-detector │──│      extractors/                 │  │    │
+│  │  │ (type detection) │  │  base-extractor.js (UI/sidebar) │  │    │
+│  │  └──────────────────┘  │  youtube-extractor.js            │  │    │
+│  │                         │  article-extractor.js            │  │    │
+│  │                         │  webpage-extractor.js            │  │    │
+│  │                         │  video-extractor.js              │  │    │
+│  │                         │  selection-extractor.js          │  │    │
+│  │                         └─────────────────────────────────┘  │    │
+│  └────────────────────────────────┬────────────────────────────┘    │
+│                                    │ postMessage                     │
+│  ┌─────────────────┐    ┌────────▼────────┐    ┌─────────────────┐ │
+│  │  context menus   │    │   sidebar.js    │◄──►│  background.js  │ │
+│  │  (right-click)   │    │   (Sidebar UI)  │    │(Service Worker) │ │
 │  └─────────────────┘    └─────────────────┘    └────────┬────────┘ │
 └─────────────────────────────────────────────────────────┼──────────┘
                                                           │
@@ -28,14 +43,14 @@ This is a Chrome extension that generates AI summaries of YouTube videos using C
 │         │                     │                     │              │
 │         ▼                     ▼                     ▼              │
 │  ┌──────────────┐    ┌───────────────┐    ┌─────────────────┐     │
-│  │claude-bridge │    │ apple-notes.js│    │transcript-      │     │
-│  │    .js       │    │ (AppleScript) │    │extractor.js     │     │
-│  └──────┬───────┘    └───────────────┘    │(unused-legacy)  │     │
-│         │                                  └─────────────────┘     │
+│  │claude-bridge │    │ apple-notes.js│    │apple-reminders  │     │
+│  │    .js       │    │ (AppleScript) │    │    .js          │     │
+│  └──────┬───────┘    └───────────────┘    └─────────────────┘     │
+│         │                                                          │
 │         ▼                                                          │
 │  ┌──────────────┐                                                  │
-│  │  Claude CLI  │                                                  │
-│  │   (claude)   │                                                  │
+│  │ Anthropic API│                                                  │
+│  │  / Claude CLI│                                                  │
 │  └──────────────┘                                                  │
 └────────────────────────────────────────────────────────────────────┘
 ```
@@ -46,7 +61,17 @@ This is a Chrome extension that generates AI summaries of YouTube videos using C
 youtube-summary-extension/
 ├── extension/                    # Chrome extension files
 │   ├── manifest.json            # Extension manifest (Manifest V3)
-│   ├── content.js               # Injected into YouTube pages
+│   ├── content-detector.js      # Detects content type, runs on all pages
+│   ├── content.js               # Legacy (unused, see extractors/)
+│   ├── extractors/              # Content extraction modules
+│   │   ├── base-extractor.js    # Shared UI: popup, floating button, sidebar
+│   │   ├── youtube-extractor.js # YouTube transcript & comment extraction
+│   │   ├── article-extractor.js # Article text extraction (DOM heuristics)
+│   │   ├── webpage-extractor.js # Fallback page text extraction
+│   │   ├── video-extractor.js   # HTML5 video caption extraction (VTT/SRT)
+│   │   └── selection-extractor.js # Text selection extraction
+│   ├── lib/                     # Vendored libraries
+│   │   └── readability.js       # Mozilla Readability (placeholder)
 │   ├── background.js            # Service worker for native messaging
 │   ├── sidebar/
 │   │   ├── sidebar.html         # Sidebar UI
@@ -58,14 +83,15 @@ youtube-summary-extension/
 │       └── settings.css         # Settings styles
 ├── native-host/                  # Node.js native messaging host
 │   ├── host.js                  # Main entry point (stdin/stdout)
-│   ├── claude-bridge.js         # Claude CLI integration
+│   ├── claude-bridge.js         # Claude CLI/API integration
+│   ├── anthropic-client.js      # Direct Anthropic API client
 │   ├── apple-notes.js           # AppleScript wrapper
-│   ├── transcript-extractor.js  # Legacy (unused - DOM scraping now)
+│   ├── apple-reminders.js       # Apple Reminders via AppleScript
 │   ├── package.json             # Dependencies
 │   └── com.youtube.summary.json # Native messaging manifest template
 ├── install.sh                    # Installation script
 ├── README.md                     # User documentation
-├── AGENTS.md                     # This file (dev guide)
+├── CLAUDE.md                     # This file (dev guide)
 ├── FEATURES.md                   # Feature request log (UPDATE THIS when adding features!)
 └── PLAN.md                       # Original implementation plan
 ```

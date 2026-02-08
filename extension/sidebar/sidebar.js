@@ -1,6 +1,7 @@
 // YouTube Summary Sidebar - Main Logic
 
 let currentVideoInfo = null;
+let currentContentType = 'youtube_video'; // Default for backward compatibility
 let currentSummary = null;
 let selectedLearnings = new Set();
 let currentNoteId = null; // Cached note ID for updating existing notes
@@ -34,7 +35,8 @@ const errorSection = document.getElementById('error-section');
 
 // Initialize
 function init() {
-  // Request video info from content script
+  // Request content info from content script (supports both old and new message types)
+  window.parent.postMessage({ type: 'REQUEST_CONTENT_INFO' }, '*');
   window.parent.postMessage({ type: 'REQUEST_VIDEO_INFO' }, '*');
 
   // Set up event listeners
@@ -156,14 +158,50 @@ function openSettings() {
   chrome.runtime.openOptionsPage();
 }
 
-// Load custom analysis instructions from storage
+// Load custom analysis instructions from storage (template-aware)
 async function loadAnalysisInstructions() {
   try {
-    const result = await chrome.storage.sync.get(['analysisInstructions']);
+    const result = await chrome.storage.sync.get(['templates', 'analysisInstructions']);
+    // Use template instructions if available for current content type
+    if (result.templates && result.templates[currentContentType]) {
+      return result.templates[currentContentType].instructions || null;
+    }
+    // Fallback to legacy analysisInstructions
     return result.analysisInstructions || null;
   } catch (error) {
     console.error('Error loading analysis instructions:', error);
     return null;
+  }
+}
+
+/**
+ * Load template config for the current content type
+ * @returns {Promise<Object|null>} - Template with sections array, or null
+ */
+async function loadTemplateConfig() {
+  try {
+    const result = await chrome.storage.sync.get(['templates']);
+    if (result.templates && result.templates[currentContentType]) {
+      return result.templates[currentContentType];
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading template config:', error);
+    return null;
+  }
+}
+
+// Load API settings from storage
+async function loadApiSettings() {
+  try {
+    const result = await chrome.storage.sync.get(['anthropicApiKey', 'claudeModel']);
+    return {
+      anthropicApiKey: result.anthropicApiKey || '',
+      claudeModel: result.claudeModel || 'sonnet'
+    };
+  } catch (error) {
+    console.error('Error loading API settings:', error);
+    return { anthropicApiKey: '', claudeModel: 'sonnet' };
   }
 }
 
@@ -172,11 +210,22 @@ let pendingTranscriptResolver = null;
 
 // Listen for messages from content script
 window.addEventListener('message', (event) => {
+  if (event.data.type === 'CONTENT_INFO') {
+    currentContentType = event.data.contentType || 'youtube_video';
+    currentVideoInfo = event.data;
+    videoTitle.textContent = event.data.title;
+    updateUIForContentType(currentContentType, event.data);
+
+    if (event.data.links && event.data.links.length > 0) {
+      console.log(`Found ${event.data.links.length} links in description`);
+    }
+  }
+
   if (event.data.type === 'VIDEO_INFO') {
+    currentContentType = 'youtube_video';
     currentVideoInfo = event.data;
     videoTitle.textContent = event.data.title;
 
-    // Show link count if links were found
     if (event.data.links && event.data.links.length > 0) {
       console.log(`Found ${event.data.links.length} links in description`);
     }
@@ -193,6 +242,57 @@ window.addEventListener('message', (event) => {
     updateProgressUI(event.data.progress);
   }
 });
+
+/**
+ * Update UI elements based on content type
+ * @param {string} contentType - The detected content type
+ * @param {Object} data - Content info data
+ */
+function updateUIForContentType(contentType, data) {
+  // Update generate button text
+  const btnTextMap = {
+    youtube_video: 'Generate Summary',
+    article: 'Summarize Article',
+    video_with_captions: 'Summarize Video',
+    selected_text: 'Summarize Selection',
+    webpage: 'Summarize Page'
+  };
+  const btnText = btnTextMap[contentType] || 'Generate Summary';
+  const btnSvg = generateBtn.querySelector('svg');
+  generateBtn.innerHTML = '';
+  if (btnSvg) generateBtn.appendChild(btnSvg);
+  generateBtn.appendChild(document.createTextNode(' ' + btnText));
+
+  // Show/hide article metadata
+  const metadataEl = document.getElementById('content-metadata');
+  if (metadataEl) {
+    if (contentType === 'article' && (data.author || data.siteName || data.publishDate)) {
+      let metaHtml = '';
+      if (data.siteName) metaHtml += `<span class="meta-site">${data.siteName}</span>`;
+      if (data.author) metaHtml += `<span class="meta-author">by ${data.author}</span>`;
+      if (data.publishDate) {
+        const date = new Date(data.publishDate);
+        if (!isNaN(date)) {
+          metaHtml += `<span class="meta-date">${date.toLocaleDateString()}</span>`;
+        }
+      }
+      metadataEl.innerHTML = metaHtml;
+      metadataEl.style.display = 'flex';
+    } else {
+      metadataEl.style.display = 'none';
+    }
+  }
+
+  // Show/hide transcript viewer (only for YouTube and video content)
+  const transcriptViewer = document.getElementById('transcript-viewer');
+  if (transcriptViewer) {
+    if (contentType === 'youtube_video' || contentType === 'video_with_captions') {
+      transcriptViewer.style.display = 'block';
+    } else {
+      transcriptViewer.style.display = 'none';
+    }
+  }
+}
 
 // Track completed stages, input tokens, and elapsed time
 let completedStages = new Set();
@@ -329,7 +429,7 @@ function showSection(section) {
 // Handle Generate Summary
 async function handleGenerateSummary() {
   if (!currentVideoInfo) {
-    showError('Video information not available. Please refresh the page.');
+    showError('Content information not available. Please refresh the page.');
     return;
   }
 
@@ -360,12 +460,15 @@ async function handleGenerateSummary() {
       console.log(`Received ${cachedViewerComments.length} viewer comments`);
     }
 
-    // Load custom analysis instructions
+    // Load custom analysis instructions, template config, and API settings
     const customInstructions = await loadAnalysisInstructions();
+    const templateConfig = await loadTemplateConfig();
+    const apiSettings = await loadApiSettings();
 
     // Step 2: Send transcript to native host for Claude processing
     const response = await sendNativeMessage({
       action: 'generateSummary',
+      contentType: currentContentType,
       videoId: currentVideoInfo.videoId,
       title: currentVideoInfo.title,
       transcript: transcriptResult.transcript,
@@ -373,7 +476,14 @@ async function handleGenerateSummary() {
       descriptionLinks: currentVideoInfo.links || [],
       creatorComments: cachedCreatorComments,
       viewerComments: cachedViewerComments,
-      customInstructions: customInstructions
+      customInstructions: customInstructions,
+      templateSections: templateConfig?.sections || null,
+      anthropicApiKey: apiSettings.anthropicApiKey,
+      model: apiSettings.claudeModel,
+      // Article-specific fields
+      author: currentVideoInfo.author || null,
+      siteName: currentVideoInfo.siteName || null,
+      publishDate: currentVideoInfo.publishDate || null
     });
 
     if (response.success) {
@@ -1158,6 +1268,9 @@ async function handleFollowUp() {
     // Get current learnings to provide context
     const existingLearnings = getEditedLearnings();
 
+    // Load API settings for follow-up
+    const apiSettings = await loadApiSettings();
+
     // Send follow-up request to native host
     const response = await sendNativeMessage({
       action: 'followUp',
@@ -1165,7 +1278,9 @@ async function handleFollowUp() {
       title: currentVideoInfo.title,
       transcript: cachedTranscript,
       query: query,
-      existingLearnings: existingLearnings
+      existingLearnings: existingLearnings,
+      anthropicApiKey: apiSettings.anthropicApiKey,
+      model: apiSettings.claudeModel
     });
 
     if (response.success) {
@@ -1586,6 +1701,14 @@ async function fetchTranscriptForPreview() {
   const transcriptStatus = document.getElementById('transcript-status');
 
   if (!transcriptContent || !transcriptStatus) return;
+
+  // Only fetch transcript preview for video content types
+  if (currentContentType !== 'youtube_video' && currentContentType !== 'video_with_captions') {
+    // For articles/webpages, transcript preview is not applicable
+    const transcriptViewer = document.getElementById('transcript-viewer');
+    if (transcriptViewer) transcriptViewer.style.display = 'none';
+    return;
+  }
 
   try {
     // Request transcript from content script

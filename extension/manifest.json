@@ -1,31 +1,52 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Summary with Claude",
-  "version": "1.0.0",
-  "description": "Generate AI summaries of YouTube videos and save key learnings to Apple Notes",
+  "name": "AI Summary with Claude",
+  "version": "2.0.0",
+  "description": "Generate AI summaries of YouTube videos, articles, and web pages — save key learnings to Apple Notes",
   "permissions": [
     "activeTab",
     "storage",
-    "nativeMessaging"
+    "nativeMessaging",
+    "contextMenus"
   ],
   "host_permissions": [
-    "https://www.youtube.com/*",
-    "https://api.elevenlabs.io/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
+      "matches": ["<all_urls>"],
+      "js": [
+        "lib/readability.js",
+        "extractors/base-extractor.js",
+        "extractors/youtube-extractor.js",
+        "extractors/article-extractor.js",
+        "extractors/webpage-extractor.js",
+        "extractors/video-extractor.js",
+        "extractors/selection-extractor.js",
+        "content-detector.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["sidebar/sidebar.html", "sidebar/sidebar.js", "sidebar/styles.css", "settings/settings.html", "settings/settings.css", "settings/settings.js"],
-      "matches": ["https://www.youtube.com/*"]
+      "resources": [
+        "sidebar/sidebar.html",
+        "sidebar/sidebar.js",
+        "sidebar/styles.css",
+        "settings/settings.html",
+        "settings/settings.css",
+        "settings/settings.js",
+        "extractors/article-extractor.js",
+        "extractors/webpage-extractor.js",
+        "extractors/video-extractor.js",
+        "extractors/selection-extractor.js",
+        "lib/readability.js"
+      ],
+      "matches": ["<all_urls>"]
     }
   ],
   "options_ui": {

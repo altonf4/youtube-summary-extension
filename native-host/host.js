@@ -12,6 +12,7 @@ const appleNotes = require('./apple-notes');
 const appleReminders = require('./apple-reminders');
 const logger = require('./logger');
 const elevenlabs = require('./elevenlabs');
+const anthropicClient = require('./anthropic-client');
 
 // Native messaging protocol uses length-prefixed messages
 // Message format: [4 bytes: message length][message in JSON]
@@ -91,6 +92,10 @@ async function handleMessage(message) {
         response = await handleListVoices(message);
         break;
 
+      case 'checkAuth':
+        response = await handleCheckAuth(message);
+        break;
+
       default:
         response = {
           success: false,
@@ -113,14 +118,14 @@ async function handleMessage(message) {
 
 // Handle generate summary action
 async function handleGenerateSummary(message) {
-  const { videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, requestId } = message;
+  const { contentType, videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, templateSections, requestId, anthropicApiKey, model, author, siteName, publishDate } = message;
 
-  if (!videoId) {
+  if (!videoId && contentType === 'youtube_video') {
     return { success: false, error: 'Video ID is required' };
   }
 
   if (!transcript) {
-    return { success: false, error: 'Transcript is required' };
+    return { success: false, error: 'Content text is required' };
   }
 
   try {
@@ -143,7 +148,7 @@ async function handleGenerateSummary(message) {
     // Generate summary with Claude
     logDebug('Generating summary with Claude Code...');
     logDebug(`Description length: ${description?.length || 0} chars, Links: ${descriptionLinks?.length || 0}`);
-    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress);
+    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress, { apiKey: anthropicApiKey, model, contentType: contentType || 'youtube_video', author, siteName, publishDate, templateSections });
 
     if (!summaryResult.success) {
       return summaryResult;
@@ -260,7 +265,7 @@ async function handleListFolders() {
 
 // Handle follow-up query action
 async function handleFollowUp(message) {
-  const { videoId, title, transcript, query, existingLearnings } = message;
+  const { videoId, title, transcript, query, existingLearnings, anthropicApiKey, model } = message;
 
   if (!transcript) {
     return { success: false, error: 'Transcript is required' };
@@ -275,17 +280,19 @@ async function handleFollowUp(message) {
     logDebug(`Existing learnings: ${existingLearnings.length}`);
 
     // Generate follow-up with Claude
-    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings);
+    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings, { apiKey: anthropicApiKey, model });
 
     if (!result.success) {
       return result;
     }
 
-    logDebug(`Follow-up generated: ${result.additionalLearnings.length} new learnings`);
+    logDebug(`Follow-up generated: ${(result.insights || []).length} insights, ${(result.actions || []).length} actions`);
 
     return {
       success: true,
-      additionalLearnings: result.additionalLearnings
+      insights: result.insights || [],
+      actions: result.actions || [],
+      additionalLearnings: result.insights || [] // backward compat
     };
 
   } catch (error) {
@@ -358,6 +365,29 @@ async function handleListVoices(message) {
   } catch (error) {
     logDebug(`Error fetching voices: ${error.message}`);
     return { success: false, error: error.message };
+  }
+}
+
+// Handle check auth action
+async function handleCheckAuth(message) {
+  const { anthropicApiKey } = message;
+
+  try {
+    logDebug('Checking auth status...');
+    const status = anthropicClient.checkAuthStatus(anthropicApiKey);
+    logDebug(`Auth status: ${status.method} (available: ${status.available})`);
+
+    return {
+      success: true,
+      authMethod: status.method,
+      available: status.available
+    };
+  } catch (error) {
+    logDebug(`Error checking auth: ${error.message}`);
+    return {
+      success: false,
+      error: error.message
+    };
   }
 }
 

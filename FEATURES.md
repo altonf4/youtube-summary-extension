@@ -439,6 +439,211 @@ sidebar.js (updateProgressUI)
 - `extension/sidebar/sidebar.js` - Audio generation and playback
 - `extension/sidebar/styles.css` - Audio button/player styling
 
+### 22. Direct Anthropic API with OAuth + API Key Authentication
+**Request:** "Add direct Anthropic API integration using OAuth from Claude Code and an API key fallback, instead of always spawning the CLI."
+
+**Implementation:**
+- **Three-tier auth strategy**:
+  1. **OAuth** from Claude Code (reads macOS Keychain or `~/.claude/.credentials.json`)
+  2. **User-entered API key** (configured in settings page)
+  3. **CLI fallback** (`claude --print` as before)
+- **New Module** (`native-host/anthropic-client.js`):
+  - `loadOAuthCredentials()` - Reads from macOS Keychain (`security find-generic-password`), falls back to credentials file
+  - `isOAuthToken(token)` - Detects OAuth tokens by `sk-ant-oat` prefix
+  - `resolveModelName(shortName)` - Maps `'sonnet'` → `'claude-sonnet-4-20250514'`, etc.
+  - `callAnthropicAPI(prompt, options)` - Makes POST to Anthropic Messages API
+    - OAuth path: `Authorization: Bearer` + required OAuth headers
+    - API key path: `x-api-key` header
+    - 401 retry: reloads credentials once (token may have been refreshed)
+    - 2-minute timeout matching existing behavior
+  - `checkAuthStatus(apiKey)` - Returns which auth method is available
+  - Zero dependencies (uses Node.js built-in `https` module)
+- **Claude Bridge** (`native-host/claude-bridge.js`):
+  - `generateSummary()` and `generateFollowUp()` now try API first, fall back to CLI on failure
+  - `callClaudeCode()` accepts `{ model }` option for CLI model selection
+- **Native Host** (`native-host/host.js`):
+  - `handleGenerateSummary()` and `handleFollowUp()` extract `anthropicApiKey` and `model` from messages
+  - New `checkAuth` action returns which auth method is available
+- **Settings Page** (`extension/settings/`):
+  - New "Claude API" section with:
+    - Auth status indicator (green dot = connected, red = disconnected)
+    - Anthropic API key input (password field with toggle)
+    - Model selector dropdown (Sonnet/Opus/Haiku)
+    - Hint text explaining when API key is needed
+  - Auth status auto-checks on load and when API key changes
+- **Sidebar** (`extension/sidebar/sidebar.js`):
+  - `loadApiSettings()` loads API key and model from `chrome.storage.sync`
+  - Both `handleGenerateSummary()` and `handleFollowUp()` pass credentials in messages
+
+**Files Changed:**
+- `native-host/anthropic-client.js` - NEW: Anthropic API client with OAuth + API key support
+- `native-host/anthropic-client.test.js` - NEW: 23 unit tests
+- `native-host/claude-bridge.js` - API-first with CLI fallback
+- `native-host/host.js` - Credential pass-through, checkAuth handler
+- `extension/settings/settings.html` - Claude API settings section
+- `extension/settings/settings.js` - Save/load API settings, auth status check
+- `extension/settings/settings.css` - Auth status indicator styles
+- `extension/sidebar/sidebar.js` - Load and pass API credentials
+
+### 23. Multi-Content Summarization - Modular Architecture (Phase 1)
+**Request:** Extend the extension from YouTube-only to support summarizing any web content — articles, blog posts, selected text, and videos on any platform with caption tracks.
+
+**Implementation (Phase 1 - Architecture Refactor):**
+- **Modular Extractor Pattern:**
+  - Split monolithic `content.js` (1127 lines) into 7 focused modules
+  - `content-detector.js` — Detects content type on any page (youtube_video, article, video_with_captions, selected_text, webpage)
+  - `extractors/base-extractor.js` — Shared UI: popup banner, floating button (draggable), sidebar iframe, styles
+  - `extractors/youtube-extractor.js` — YouTube transcript/comments extraction (extracted from content.js)
+  - `extractors/article-extractor.js` — Article text extraction using DOM heuristics
+  - `extractors/webpage-extractor.js` — Fallback page text extraction (strips nav/footer/ads)
+  - `extractors/video-extractor.js` — HTML5 video caption extraction (VTT/SRT parsing)
+  - `extractors/selection-extractor.js` — Text selection extraction
+- **Manifest Changes:**
+  - Name: "YouTube Summary with Claude" → "AI Summary with Claude"
+  - Version: 1.0.0 → 2.0.0
+  - Content scripts run on `<all_urls>` (previously YouTube only)
+  - Added `contextMenus` permission for right-click "Summarize with Claude"
+- **Content-Type Aware Prompts** (`claude-bridge.js`):
+  - `createArticlePrompt()` — Article/webpage-specific system prompt with metadata
+  - `createSelectionPrompt()` — Selected text analysis prompt
+  - Routes to correct prompt based on `contentType` parameter
+- **Context Menu** (`background.js`):
+  - Right-click "Summarize with Claude" on selected text
+  - Sends `SUMMARIZE_SELECTION` message to content script
+- **Sidebar Adaptations** (`sidebar.js`):
+  - `CONTENT_INFO` message handler alongside legacy `VIDEO_INFO`
+  - `updateUIForContentType()` adapts UI per content type (button text, metadata display, transcript viewer visibility)
+  - Passes `contentType`, `author`, `siteName`, `publishDate` to native host
+- **Backward Compatibility:**
+  - YouTube flow completely unchanged
+  - Sends both `VIDEO_INFO` and `CONTENT_INFO` messages for YouTube
+  - Old content.js replaced with legacy notice pointing to new modules
+- **Tests:** 9 new tests for `createArticlePrompt` and `createSelectionPrompt` (125 total, all passing)
+
+**Files Created:**
+- `extension/content-detector.js`
+- `extension/extractors/base-extractor.js`
+- `extension/extractors/youtube-extractor.js`
+- `extension/extractors/article-extractor.js`
+- `extension/extractors/webpage-extractor.js`
+- `extension/extractors/video-extractor.js`
+- `extension/extractors/selection-extractor.js`
+- `extension/lib/readability.js` (placeholder for Phase 2)
+
+**Files Modified:**
+- `extension/manifest.json` — all_urls, contextMenus, new content scripts
+- `extension/content.js` — Replaced with legacy notice
+- `extension/sidebar/sidebar.js` — Content type awareness
+- `extension/sidebar/sidebar.html` — Content metadata display
+- `extension/sidebar/styles.css` — Metadata styles
+- `extension/background.js` — Context menu registration
+- `native-host/host.js` — Content type routing, follow-up handler fix
+- `native-host/claude-bridge.js` — Article/selection prompts
+- `native-host/claude-bridge.test.js` — 9 new tests
+
+### 24. Multi-Content Summarization - Article & Webpage Support (Phase 2)
+**Request:** Enable summarizing articles, blog posts, documentation, and any text-heavy web page.
+
+**Implementation:**
+- **Mozilla Readability.js Integration:**
+  - Vendored Mozilla's Readability.js (~90KB, Apache 2.0 license) into `extension/lib/readability.js`
+  - Loaded as content script before article-extractor.js so it's available as a global
+  - Provides clean article text extraction with title, byline, site name, excerpt
+- **Article Extractor** (`extension/extractors/article-extractor.js`):
+  - Strategy 1: Mozilla Readability.js (clones document, parses with Readability)
+  - Strategy 2: DOM heuristics fallback (`<article>`, main content selectors, body cleanup)
+  - Returns structured result with text, title, byline, siteName, excerpt
+  - Minimum 100 character threshold to avoid extracting empty pages
+- **Article-Specific Prompts** (`native-host/claude-bridge.js`):
+  - `createArticlePrompt()` — System prompt says "analyzing a web article" with metadata (author, site, publish date)
+  - Includes article text truncated at 50K characters
+  - Template-driven output format when templates are configured
+- **Sidebar Adaptations** (`extension/sidebar/sidebar.js`):
+  - Shows article metadata (author, site name, publish date) instead of video info
+  - Button text adapts: "Summarize Article" / "Summarize Page" based on content type
+  - Transcript viewer hidden for non-video content types
+
+**Files Created:**
+- `extension/lib/readability.js` — Vendored Mozilla Readability.js
+
+**Files Modified:**
+- `extension/extractors/article-extractor.js` — Readability.js integration with heuristic fallback
+- `extension/manifest.json` — Added `lib/readability.js` to content scripts
+- `native-host/claude-bridge.js` — Article-specific prompt construction
+
+### 25. Multi-Content Summarization - Selected Text & Video Captions (Phase 3)
+**Request:** Enable summarizing selected text via right-click context menu, and videos with HTML5 caption tracks on any platform.
+
+**Implementation:**
+- **Selected Text Extraction** (`extension/extractors/selection-extractor.js`):
+  - Extracts `window.getSelection().toString()` with surrounding context
+  - Returns page URL, title, and selected text
+  - Minimum selection length validation
+- **Context Menu** (`extension/background.js`):
+  - Registers "Summarize with Claude" context menu item on extension install
+  - Appears on right-click when text is selected
+  - Sends `SUMMARIZE_SELECTION` message to content script to open sidebar
+- **Video Caption Extraction** (`extension/extractors/video-extractor.js`):
+  - Finds `<video>` elements with `<track kind="captions|subtitles">`
+  - Fetches and parses VTT/SRT caption files into plain text
+  - Works on any site with standard HTML5 video + caption tracks (Vimeo, Coursera, etc.)
+  - Graceful fallback: offers to summarize page text if no captions found
+- **Selection-Specific Prompts** (`native-host/claude-bridge.js`):
+  - `createSelectionPrompt()` — Focused analysis prompt for selected text
+  - Includes page context (URL, title) for better understanding
+  - Template-driven output when templates configured
+
+**Files Created:**
+- `extension/extractors/selection-extractor.js`
+- `extension/extractors/video-extractor.js`
+
+**Files Modified:**
+- `extension/background.js` — Context menu registration
+- `native-host/claude-bridge.js` — Selection prompt construction
+
+### 26. User-Configurable Output Templates (Phase 4)
+**Request:** Allow users to customize the output format (sections, labels, order) per content type through the Settings page.
+
+**Implementation:**
+- **Template Data Structure** (stored in `chrome.storage.sync`):
+  - Per content type: `youtube_video`, `article`, `webpage`, `selected_text`, `video_with_captions`
+  - Each template has: name, instructions (prompt text), sections array
+  - Each section has: id, label (user-editable), enabled (toggle), format (paragraphs/bullets)
+- **Settings UI** (`extension/settings/`):
+  - Content type dropdown selector to switch between templates
+  - Per-type instruction textarea (replaces single `analysisInstructions`)
+  - Section list with checkboxes to enable/disable, editable labels, format dropdowns
+  - Drag-and-drop section reordering
+  - Preset buttons per content type (e.g., YouTube: Default/Educational/Tutorial/Business; Article: Default/Research Paper/News/Technical)
+  - Live format preview showing expected output structure
+  - Reset to default button per content type
+- **Template-Driven Prompts** (`native-host/claude-bridge.js`):
+  - `buildOutputFormat(templateSections, context)` — Dynamically builds output format instructions from enabled sections
+  - Maps section IDs to appropriate instruction text (e.g., summary → "comprehensive overview", key_learnings → "most valuable insights")
+  - `createPrompt()`, `createArticlePrompt()`, `createSelectionPrompt()` all accept template sections
+  - Falls back to hardcoded format when no template configured
+- **Template-Driven Parsing** (`native-host/claude-bridge.js`):
+  - `getParseLabels(templateSections)` — Maps section IDs to user-configured labels (uppercased)
+  - `parseResponse()` uses dynamic section labels from templates for boundary detection
+  - Boundary regex requires `\n` prefix to avoid matching words within text content
+- **Migration:**
+  - Existing `analysisInstructions` automatically migrated to `templates.youtube_video.instructions`
+  - Legacy `analysisInstructions` still written alongside templates for backward compatibility
+- **Presets per content type:**
+  - YouTube: Default, Educational, Tutorial, Business
+  - Article: Default, Research Paper, News, Technical
+  - Selected Text: Explain, Analyze, Simplify
+  - Web Page: Default, Technical Documentation, News
+
+**Files Modified:**
+- `extension/settings/settings.html` — Template editor UI with type selector, sections list, presets
+- `extension/settings/settings.js` — Complete rewrite with template CRUD, section reordering, presets, migration
+- `extension/settings/settings.css` — Template selector, editor, sections list, preset button styles
+- `extension/sidebar/sidebar.js` — `loadTemplateConfig()`, passes templateSections to native host
+- `native-host/host.js` — Extracts and passes templateSections
+- `native-host/claude-bridge.js` — `buildOutputFormat()`, `getParseLabels()`, template-driven parsing
+- `native-host/claude-bridge.test.js` — 11 new tests for template functions
+
 ---
 
 ## Pending / Future Ideas
@@ -446,7 +651,7 @@ sidebar.js (updateProgressUI)
 - [ ] Notion integration (API-based export)
 - [ ] Batch process multiple videos
 - [ ] Keyboard shortcuts
-- [ ] Custom summary templates
+- [x] Custom summary templates (Feature #26 - Phase 4)
 - [ ] Obsidian export
 
 ---
@@ -454,15 +659,23 @@ sidebar.js (updateProgressUI)
 ## Technical Notes
 
 ### Key Files Modified
-- `extension/content.js` - Popup banner, floating button, drag functionality, progress forwarding, description/link extraction
-- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane, multi-export UI, action items section
-- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality, export handlers (clipboard, download), native host check, action items display/save
-- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting, light/dark mode theming, export button styles, action items styling
-- `extension/background.js` - Progress callback routing
-- `native-host/host.js` - Progress message sending, description/links pass-through, Apple Reminders integration
-- `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing, ACTION ITEMS section
+- `extension/content-detector.js` - Content type detection, page metadata extraction, URL change handling
+- `extension/extractors/base-extractor.js` - Shared UI: popup banner, floating button, sidebar, content routing
+- `extension/extractors/youtube-extractor.js` - YouTube transcript/comments extraction
+- `extension/extractors/article-extractor.js` - Article text extraction via DOM heuristics
+- `extension/extractors/webpage-extractor.js` - Fallback page text extraction
+- `extension/extractors/video-extractor.js` - HTML5 video caption extraction (VTT/SRT)
+- `extension/extractors/selection-extractor.js` - Text selection extraction
+- `extension/content.js` - Legacy notice (functionality moved to extractors/)
+- `extension/sidebar/sidebar.html` - Progress stages UI, back-to-edit button, relevant links section, transcript viewer, search pane, multi-export UI, action items section, content metadata
+- `extension/sidebar/sidebar.js` - Progress handling, back-to-edit logic, link display/selection, transcript preview, search functionality, export handlers (clipboard, download), native host check, action items display/save, content type awareness
+- `extension/sidebar/styles.css` - Progress stage styling, link item styling, transcript viewer styling, search highlighting, light/dark mode theming, export button styles, action items styling, content metadata styles
+- `extension/background.js` - Progress callback routing, context menu registration
+- `native-host/host.js` - Progress message sending, description/links pass-through, Apple Reminders integration, checkAuth handler, content type routing
+- `native-host/claude-bridge.js` - Progress callbacks, description in prompt, relevant link parsing, ACTION ITEMS section, API-first with CLI fallback, article/selection prompts
+- `native-host/anthropic-client.js` - Direct Anthropic API client with OAuth + API key auth
 - `native-host/apple-notes.js` - listFolders(), relevant links in saved notes, action items with checkbox symbols
-- `native-host/apple-reminders.js` - NEW: Apple Reminders integration via AppleScript
+- `native-host/apple-reminders.js` - Apple Reminders integration via AppleScript
 - `install.sh` - Improved installer with colored output, Claude CLI detection, auto-detection
 
 ### Storage
@@ -470,8 +683,11 @@ sidebar.js (updateProgressUI)
 - `chrome.storage.local['folderSuggestions']` - Previously used folder names
 - `chrome.storage.sync['analysisInstructions']` - Custom analysis instructions
 - `chrome.storage.sync['remindersCheckedByDefault']` - Whether action items are checked by default (default: true)
+- `chrome.storage.sync['anthropicApiKey']` - Anthropic API key (fallback when OAuth unavailable)
+- `chrome.storage.sync['claudeModel']` - Claude model selection: 'sonnet' (default), 'opus', or 'haiku'
 - `chrome.storage.sync['elevenlabsApiKey']` - ElevenLabs API key
 - `chrome.storage.sync['elevenlabsVoiceId']` - Selected voice ID
 - `chrome.storage.sync['audioIncludeSummary']` - Include summary in audio (default: true)
 - `chrome.storage.sync['audioIncludeLearnings']` - Include key learnings in audio (default: true)
 - `chrome.storage.sync['audioIncludeActions']` - Include action items in audio (default: false)
+- `chrome.storage.sync['templates']` - Per-content-type output templates with sections, labels, and instructions

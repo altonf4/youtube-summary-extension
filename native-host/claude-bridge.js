@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
 const logger = require('./logger');
+const anthropicClient = require('./anthropic-client');
 
 /**
  * Generate summary using Claude Code CLI
@@ -20,29 +21,50 @@ const logger = require('./logger');
  * @param {function} onProgress - Progress callback
  * @returns {Promise<Object>} - Summary, key learnings, and relevant links
  */
-async function generateSummary(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null, onProgress = () => {}) {
+async function generateSummary(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null, onProgress = () => {}, options = {}) {
   const log = (msg) => logger.log(msg, 'claude-bridge');
+  const { apiKey, model, contentType, author, siteName, publishDate, templateSections } = options;
 
   try {
-    onProgress({ stage: 'preparing', message: 'Preparing transcript...' });
+    onProgress({ stage: 'preparing', message: 'Preparing content...' });
 
-    // Craft the prompt with custom instructions wrapped in system format
-    const prompt = createPrompt(videoTitle, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions);
-    log(`Prompt length: ${prompt.length} characters`);
+    // Select prompt based on content type
+    let prompt;
+    if (contentType === 'article' || contentType === 'webpage') {
+      prompt = createArticlePrompt(videoTitle, transcript, description, descriptionLinks, customInstructions, { author, siteName, publishDate, contentType, templateSections });
+    } else if (contentType === 'selected_text') {
+      prompt = createSelectionPrompt(videoTitle, transcript, customInstructions, { templateSections });
+    } else {
+      // Default: YouTube video or video_with_captions
+      prompt = createPrompt(videoTitle, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, { templateSections });
+    }
+    log(`Prompt length: ${prompt.length} characters (contentType: ${contentType || 'youtube_video'})`);
     log(`Including ${creatorComments?.length || 0} creator comments, ${viewerComments?.length || 0} viewer comments in prompt`);
 
-    // Find claude command
-    const claudeCmd = findClaudeCodeCommand();
-    log(`Using Claude command: ${claudeCmd}`);
+    // Try direct API first, fall back to CLI
+    let response;
+    try {
+      log('Attempting direct Anthropic API call...');
+      response = await anthropicClient.callAnthropicAPI(prompt, {
+        apiKey,
+        model: model || 'sonnet',
+        onProgress
+      });
+      log(`API response received: ${response.length} characters`);
+    } catch (apiErr) {
+      log(`API call failed: ${apiErr.message}, falling back to CLI...`);
+      onProgress({ stage: 'starting', message: 'Falling back to Claude CLI...' });
 
-    // Call Claude with progress tracking
-    log('Calling Claude CLI...');
-    const response = await callClaudeCode(prompt, onProgress);
-    log(`Response received: ${response.length} characters`);
+      // Fall back to CLI
+      const claudeCmd = findClaudeCodeCommand();
+      log(`Using Claude command: ${claudeCmd}`);
+      response = await callClaudeCode(prompt, onProgress, { model });
+      log(`CLI response received: ${response.length} characters`);
+    }
 
     // Parse the response
     onProgress({ stage: 'parsing', message: 'Extracting insights...' });
-    const parsed = parseResponse(response, descriptionLinks);
+    const parsed = parseResponse(response, descriptionLinks, templateSections);
     log(`Parsed summary: ${parsed.summary.length} chars, ${parsed.keyLearnings.length} learnings, ${parsed.actionItems.length} action items, ${parsed.relevantLinks.length} links`);
 
     onProgress({ stage: 'complete', message: 'Done!' });
@@ -78,6 +100,73 @@ Focus on:
 Make the summary engaging and the learnings practical.`;
 
 /**
+ * Build output format instructions from template sections
+ * @param {Array|null} templateSections - Array of section configs from user template
+ * @param {Object} context - Context flags: hasCreatorComments, hasLinks, contentLabel
+ * @returns {{formatInstructions: string, sectionHeaders: string[]}} - Format string and list of section headers
+ */
+function buildOutputFormat(templateSections, context = {}) {
+  const { hasCreatorComments, hasLinks, contentLabel } = context;
+
+  // If no template sections, return null (use hardcoded default)
+  if (!templateSections || templateSections.length === 0) {
+    return null;
+  }
+
+  const enabledSections = templateSections.filter(s => s.enabled);
+  if (enabledSections.length === 0) {
+    return null;
+  }
+
+  let format = '\nIMPORTANT: You MUST format your response EXACTLY as follows (this format is required for parsing):\n';
+  const sectionHeaders = [];
+
+  enabledSections.forEach(section => {
+    const header = section.label.toUpperCase();
+    sectionHeaders.push(header);
+
+    format += `\n${header}:\n`;
+
+    // Map section IDs to appropriate instructions
+    switch (section.id) {
+      case 'summary':
+        format += `[Write a concise summary - 2-3 paragraphs covering the main points.]\n`;
+        break;
+      case 'key_learnings':
+        format += `- [First key insight or takeaway]\n- [Second key insight]\n- [Continue as appropriate]\n`;
+        break;
+      case 'action_items':
+        format += `- [Specific actionable task - start with a verb like "Try", "Implement", "Research"]\n- [Another concrete next step]\n(If no clear action items, write "No specific action items identified")\n`;
+        break;
+      case 'creator_additions':
+        if (hasCreatorComments) {
+          format += `[List valuable insights from creator comments not in the transcript]\n- [Creator insight 1]\n`;
+        }
+        break;
+      case 'relevant_links':
+        if (hasLinks) {
+          format += `[Review the links above. Include useful resources. Format: link number + reason.]\n- 1. [Why this link is useful]\n`;
+        } else {
+          format += `(No links provided)\n`;
+        }
+        break;
+      default:
+        // Custom section - use format hint
+        if (section.format === 'bullets') {
+          format += `- [${section.label} item 1]\n- [${section.label} item 2]\n`;
+        } else {
+          format += `[Write ${section.label.toLowerCase()} content here]\n`;
+        }
+    }
+  });
+
+  const headerList = enabledSections.map(s => `${s.label.toUpperCase()}:`).join(', ');
+  format += `\nAlways include these sections with the exact headers shown above: ${headerList}`;
+
+  return { formatInstructions: format, sectionHeaders };
+}
+
+/**
  * Create prompt for Claude - wraps user instructions with system format
  * @param {string} videoTitle - Video title
  * @param {string} transcript - Transcript text
@@ -86,9 +175,10 @@ Make the summary engaging and the learnings practical.`;
  * @param {Array} creatorComments - Comments/replies from the video creator (high value)
  * @param {Array} viewerComments - Top comments from viewers (use cautiously)
  * @param {string|null} customInstructions - User's custom instructions
+ * @param {Object} opts - Options: templateSections
  * @returns {string} - Formatted prompt
  */
-function createPrompt(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null) {
+function createPrompt(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null, opts = {}) {
   // Truncate transcript if too long (Claude has token limits)
   const maxTranscriptLength = 50000; // ~12,500 tokens
   const truncatedTranscript = transcript.length > maxTranscriptLength
@@ -134,8 +224,15 @@ function createPrompt(videoTitle, transcript, description = '', descriptionLinks
   // Determine if we have creator comments to influence output
   const hasCreatorComments = creatorComments && creatorComments.length > 0;
 
-  // Wrap user instructions with system prompt that enforces output format
-  return `You are analyzing a YouTube video transcript. Follow these analysis instructions from the user:
+  // Try template-driven output format
+  const { templateSections } = opts;
+  const templateFormat = buildOutputFormat(templateSections, {
+    hasCreatorComments,
+    hasLinks: descriptionLinks.length > 0
+  });
+
+  // Build prompt
+  let prompt = `You are analyzing a YouTube video transcript. Follow these analysis instructions from the user:
 
 ---
 ${instructions}
@@ -147,7 +244,14 @@ ${truncatedDescription ? `Video Description:\n${truncatedDescription}` : ''}${li
 
 Transcript:
 ${truncatedTranscript}
+`;
 
+  if (templateFormat) {
+    // Template-driven output format
+    prompt += templateFormat.formatInstructions;
+  } else {
+    // Default hardcoded format
+    prompt += `
 IMPORTANT: You MUST format your response EXACTLY as follows (this format is required for parsing):
 
 SUMMARY:
@@ -177,6 +281,155 @@ RELEVANT LINKS:
 (If no links were provided in the description, write "No links provided")
 
 Always include SUMMARY:, KEY LEARNINGS:, ACTION ITEMS:, and RELEVANT LINKS: sections with the exact headers shown above.${hasCreatorComments ? ' Include CREATOR ADDITIONS: section only if creator comments contained valuable additional information.' : ''}`;
+  }
+
+  return prompt;
+}
+
+/**
+ * Create prompt for article/webpage content
+ * @param {string} title - Page title
+ * @param {string} text - Article/page text
+ * @param {string} description - Meta description
+ * @param {Array} links - Links found on page
+ * @param {string|null} customInstructions - User's custom instructions
+ * @param {Object} meta - Metadata: author, siteName, publishDate, contentType
+ * @returns {string} - Formatted prompt
+ */
+function createArticlePrompt(title, text, description = '', links = [], customInstructions = null, meta = {}) {
+  const { author, siteName, publishDate, contentType, templateSections } = meta;
+
+  // Truncate text if too long
+  const maxLength = 50000;
+  const truncatedText = text.length > maxLength
+    ? text.substring(0, maxLength) + '...[truncated]'
+    : text;
+
+  const maxDescLength = 2000;
+  const truncatedDescription = description.length > maxDescLength
+    ? description.substring(0, maxDescLength) + '...[truncated]'
+    : description;
+
+  const instructions = customInstructions || DEFAULT_INSTRUCTIONS;
+
+  const contentLabel = contentType === 'article' ? 'web article' : 'web page';
+
+  let metaSection = '';
+  if (author) metaSection += `Author: ${author}\n`;
+  if (siteName) metaSection += `Source: ${siteName}\n`;
+  if (publishDate) metaSection += `Published: ${publishDate}\n`;
+
+  const linksSection = links.length > 0
+    ? `\n\nLinks found on page:\n${links.map((l, i) => `${i + 1}. ${l.text}: ${l.url}`).join('\n')}`
+    : '';
+
+  // Try template-driven output format
+  const templateFormat = buildOutputFormat(templateSections, {
+    hasLinks: links.length > 0,
+    contentLabel
+  });
+
+  let prompt = `You are analyzing a ${contentLabel}. Follow these analysis instructions from the user:
+
+---
+${instructions}
+---
+
+Title: ${title}
+
+${metaSection}${truncatedDescription ? `Description:\n${truncatedDescription}\n` : ''}${linksSection}
+
+Content:
+${truncatedText}
+`;
+
+  if (templateFormat) {
+    prompt += templateFormat.formatInstructions;
+  } else {
+    prompt += `
+IMPORTANT: You MUST format your response EXACTLY as follows (this format is required for parsing):
+
+SUMMARY:
+[Write a concise summary of this ${contentLabel} - 2-3 paragraphs covering the main points and arguments.]
+
+KEY LEARNINGS:
+- [First key insight or takeaway]
+- [Second key insight or takeaway]
+- [Continue with more as appropriate]
+
+ACTION ITEMS:
+- [Specific actionable task based on the content - start with a verb]
+- [Another concrete next step]
+(If no clear action items, write "No specific action items identified")
+
+RELEVANT LINKS:
+${links.length > 0 ? `[Review the links above. Include useful resources. Format: link number + reason.]
+- 1. [Why this link is useful]` : '(No links found on this page)'}
+
+Always include SUMMARY:, KEY LEARNINGS:, ACTION ITEMS:, and RELEVANT LINKS: sections with the exact headers shown above.`;
+  }
+
+  return prompt;
+}
+
+/**
+ * Create prompt for selected text summarization
+ * @param {string} pageTitle - Page title for context
+ * @param {string} selectedText - The selected text
+ * @param {string|null} customInstructions - User's custom instructions
+ * @returns {string} - Formatted prompt
+ */
+function createSelectionPrompt(pageTitle, selectedText, customInstructions = null, opts = {}) {
+  const maxLength = 50000;
+  const truncatedText = selectedText.length > maxLength
+    ? selectedText.substring(0, maxLength) + '...[truncated]'
+    : selectedText;
+
+  const instructions = customInstructions || 'Analyze and summarize the selected text, extracting key insights.';
+  const { templateSections } = opts;
+
+  // Try template-driven output format
+  const templateFormat = buildOutputFormat(templateSections, {
+    hasLinks: false
+  });
+
+  let prompt = `You are analyzing a text selection from a web page. Follow these analysis instructions from the user:
+
+---
+${instructions}
+---
+
+Page: ${pageTitle}
+
+Selected Text:
+${truncatedText}
+`;
+
+  if (templateFormat) {
+    prompt += templateFormat.formatInstructions;
+  } else {
+    prompt += `
+IMPORTANT: You MUST format your response EXACTLY as follows (this format is required for parsing):
+
+SUMMARY:
+[Write a concise summary of the selected text - 1-2 paragraphs.]
+
+KEY LEARNINGS:
+- [First key insight]
+- [Second key insight]
+- [Continue as appropriate]
+
+ACTION ITEMS:
+- [Actionable task if applicable]
+(If no clear action items, write "No specific action items identified")
+
+RELEVANT LINKS:
+(No links provided)
+
+Always include SUMMARY:, KEY LEARNINGS:, ACTION ITEMS:, and RELEVANT LINKS: sections with the exact headers shown above.`;
+  }
+
+  return prompt;
 }
 
 /**
@@ -185,7 +438,7 @@ Always include SUMMARY:, KEY LEARNINGS:, ACTION ITEMS:, and RELEVANT LINKS: sect
  * @param {function} onProgress - Progress callback
  * @returns {Promise<string>} - Claude's response
  */
-function callClaudeCode(prompt, onProgress = () => {}) {
+function callClaudeCode(prompt, onProgress = () => {}, options = {}) {
   return new Promise((resolve, reject) => {
     // Find claude-code executable
     const claudeCommand = findClaudeCodeCommand();
@@ -197,8 +450,9 @@ function callClaudeCode(prompt, onProgress = () => {}) {
 
     onProgress({ stage: 'starting', message: 'Starting Claude CLI...' });
 
-    // Spawn Claude process (use --print for non-interactive mode, sonnet model for cost efficiency)
-    const claudeProcess = spawn(claudeCommand, ['--print', '--model', 'sonnet'], {
+    // Spawn Claude process (use --print for non-interactive mode)
+    const cliModel = options.model || 'sonnet';
+    const claudeProcess = spawn(claudeCommand, ['--print', '--model', cliModel], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
@@ -296,23 +550,72 @@ function findClaudeCodeCommand() {
 }
 
 /**
+ * Map template sections to parser labels
+ * @param {Array|null} templateSections - Template sections array
+ * @returns {Object} - Label mapping: { summary, keyLearnings, actionItems, creatorAdditions, relevantLinks }
+ */
+function getParseLabels(templateSections) {
+  // Default labels (used when no template)
+  const defaults = {
+    summary: 'SUMMARY',
+    keyLearnings: 'KEY LEARNINGS',
+    actionItems: 'ACTION ITEMS',
+    creatorAdditions: 'CREATOR ADDITIONS',
+    relevantLinks: 'RELEVANT LINKS'
+  };
+
+  if (!templateSections || templateSections.length === 0) {
+    return defaults;
+  }
+
+  // Map section IDs to their custom labels (uppercased to match prompt format)
+  const labelMap = {};
+  templateSections.forEach(s => {
+    if (s.enabled) {
+      labelMap[s.id] = s.label.toUpperCase();
+    }
+  });
+
+  return {
+    summary: labelMap.summary || defaults.summary,
+    keyLearnings: labelMap.key_learnings || defaults.keyLearnings,
+    actionItems: labelMap.action_items || defaults.actionItems,
+    creatorAdditions: labelMap.creator_additions || defaults.creatorAdditions,
+    relevantLinks: labelMap.relevant_links || defaults.relevantLinks
+  };
+}
+
+/**
  * Parse Claude's response
  * @param {string} response - Raw response from Claude
  * @param {Array} descriptionLinks - Original links from description for matching
+ * @param {Array|null} templateSections - Template sections for custom label matching
  * @returns {Object} - Parsed summary, key learnings, creator additions, and relevant links
  */
-function parseResponse(response, descriptionLinks = []) {
+function parseResponse(response, descriptionLinks = [], templateSections = null) {
   // Clean up the response
   const cleaned = response.trim();
 
+  // Build label mapping from template sections (if available)
+  const labels = getParseLabels(templateSections);
+
+  // Build regex for section boundaries - headers must be at line start
+  const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const allHeaders = [labels.summary, labels.keyLearnings, labels.actionItems, labels.creatorAdditions, labels.relevantLinks]
+    .filter(Boolean)
+    .map(escapeRegex)
+    .join('|');
+  // Use (?=\n...:) to match headers at line boundaries, not within text
+  const boundaryPattern = allHeaders ? `(?=\\n(?:${allHeaders}):|$)` : '(?=$)';
+
   // Extract summary section
-  const summaryMatch = cleaned.match(/SUMMARY:\s*([\s\S]*?)(?=KEY LEARNINGS:|$)/i);
+  const summaryMatch = cleaned.match(new RegExp(`${escapeRegex(labels.summary)}:\\s*([\\s\\S]*?)${boundaryPattern}`, 'i'));
   const summary = summaryMatch
     ? summaryMatch[1].trim()
     : cleaned.substring(0, 500); // Fallback
 
-  // Extract key learnings (stop at ACTION ITEMS, CREATOR ADDITIONS or RELEVANT LINKS)
-  const learningsMatch = cleaned.match(/KEY LEARNINGS:\s*([\s\S]*?)(?=ACTION ITEMS:|CREATOR ADDITIONS:|RELEVANT LINKS:|$)/i);
+  // Extract key learnings
+  const learningsMatch = cleaned.match(new RegExp(`${escapeRegex(labels.keyLearnings)}:\\s*([\\s\\S]*?)${boundaryPattern}`, 'i'));
   let keyLearnings = [];
 
   if (learningsMatch) {
@@ -325,8 +628,8 @@ function parseResponse(response, descriptionLinks = []) {
       .filter(line => line.length > 0);
   }
 
-  // Extract action items (stop at CREATOR ADDITIONS or RELEVANT LINKS)
-  const actionItemsMatch = cleaned.match(/ACTION ITEMS:\s*([\s\S]*?)(?=CREATOR ADDITIONS:|RELEVANT LINKS:|$)/i);
+  // Extract action items
+  const actionItemsMatch = cleaned.match(new RegExp(`${escapeRegex(labels.actionItems)}:\\s*([\\s\\S]*?)${boundaryPattern}`, 'i'));
   let actionItems = [];
 
   if (actionItemsMatch) {
@@ -346,22 +649,23 @@ function parseResponse(response, descriptionLinks = []) {
   }
 
   // Extract creator additions (if present)
-  const creatorMatch = cleaned.match(/CREATOR ADDITIONS:\s*([\s\S]*?)(?=RELEVANT LINKS:|$)/i);
   let creatorAdditions = [];
+  if (labels.creatorAdditions) {
+    const creatorMatch = cleaned.match(new RegExp(`${escapeRegex(labels.creatorAdditions)}:\\s*([\\s\\S]*?)${boundaryPattern}`, 'i'));
 
-  if (creatorMatch) {
-    const creatorText = creatorMatch[1].trim();
-    // Check if Claude said there were no additions
-    const skipPhrases = ['no additional', 'none', 'n/a', 'not substantive'];
-    const shouldSkip = skipPhrases.some(phrase => creatorText.toLowerCase().includes(phrase));
+    if (creatorMatch) {
+      const creatorText = creatorMatch[1].trim();
+      const skipPhrases = ['no additional', 'none', 'n/a', 'not substantive'];
+      const shouldSkip = skipPhrases.some(phrase => creatorText.toLowerCase().includes(phrase));
 
-    if (!shouldSkip) {
-      creatorAdditions = creatorText
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
-        .map(line => line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, ''))
-        .filter(line => line.length > 0);
+      if (!shouldSkip) {
+        creatorAdditions = creatorText
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.startsWith('-') || line.startsWith('•') || /^\d+\./.test(line))
+          .map(line => line.replace(/^[-•]\s*/, '').replace(/^\d+\.\s*/, ''))
+          .filter(line => line.length > 0);
+      }
     }
   }
 
@@ -372,7 +676,7 @@ function parseResponse(response, descriptionLinks = []) {
   }
 
   // Extract relevant links
-  const linksMatch = cleaned.match(/RELEVANT LINKS:\s*([\s\S]*?)$/i);
+  const linksMatch = cleaned.match(new RegExp(`${escapeRegex(labels.relevantLinks)}:\\s*([\\s\\S]*?)$`, 'i'));
   let relevantLinks = [];
 
   if (linksMatch && descriptionLinks.length > 0) {
@@ -437,22 +741,31 @@ function parseResponse(response, descriptionLinks = []) {
  * @param {string[]} existingLearnings - Already extracted learnings
  * @returns {Promise<Object>} - Object with insights and actions arrays
  */
-async function generateFollowUp(videoTitle, transcript, query, existingLearnings = []) {
+async function generateFollowUp(videoTitle, transcript, query, existingLearnings = [], options = {}) {
   const log = (msg) => logger.log(msg, 'claude-bridge:followup');
+  const { apiKey, model } = options;
 
   try {
     // Create follow-up prompt
     const prompt = createFollowUpPrompt(videoTitle, transcript, query, existingLearnings);
     log(`Follow-up prompt length: ${prompt.length} characters`);
 
-    // Find claude command
-    const claudeCmd = findClaudeCodeCommand();
-    log(`Using Claude command: ${claudeCmd}`);
-
-    // Call Claude (simpler, no progress tracking needed for follow-up)
-    log('Calling Claude CLI for follow-up...');
-    const response = await callClaudeCode(prompt, () => {});
-    log(`Response received: ${response.length} characters`);
+    // Try direct API first, fall back to CLI
+    let response;
+    try {
+      log('Attempting direct Anthropic API call for follow-up...');
+      response = await anthropicClient.callAnthropicAPI(prompt, {
+        apiKey,
+        model: model || 'sonnet'
+      });
+      log(`API response received: ${response.length} characters`);
+    } catch (apiErr) {
+      log(`API call failed: ${apiErr.message}, falling back to CLI...`);
+      const claudeCmd = findClaudeCodeCommand();
+      log(`Using Claude command: ${claudeCmd}`);
+      response = await callClaudeCode(prompt, () => {}, { model });
+      log(`CLI response received: ${response.length} characters`);
+    }
 
     // Parse the follow-up response (returns { insights: string[], actions: string[] })
     const parsed = parseFollowUpResponse(response);
@@ -594,9 +907,13 @@ module.exports = {
   generateFollowUp,
   // Exported for testing
   createPrompt,
+  createArticlePrompt,
+  createSelectionPrompt,
   parseResponse,
   createFollowUpPrompt,
   parseFollowUpResponse,
   parseAsPlainText,
+  buildOutputFormat,
+  getParseLabels,
   DEFAULT_INSTRUCTIONS
 };

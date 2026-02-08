@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube Summary Settings</title>
+  <title>AI Summary Settings</title>
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <div class="settings-container">
     <header>
       <h1>Settings</h1>
-      <p class="subtitle">Customize how Claude analyzes your videos</p>
+      <p class="subtitle">Customize how Claude analyzes your content</p>
       <div class="header-actions">
         <button id="save-btn" class="primary-btn">Save Settings</button>
         <span id="save-status" class="save-status"></span>
@@ -18,43 +18,44 @@
     </header>
 
     <div class="settings-content">
-      <!-- Prompt Configuration -->
+      <!-- Output Templates -->
       <section class="setting-section">
         <div class="section-header">
-          <h2>Analysis Instructions</h2>
-          <button id="reset-prompt-btn" class="text-btn">Reset to Default</button>
+          <h2>Output Templates</h2>
+          <button id="reset-template-btn" class="text-btn">Reset to Default</button>
         </div>
         <p class="section-description">
-          Tell Claude what to focus on when summarizing videos. The output format (summary + key learnings) is automatically enforced.
+          Customize analysis instructions and output sections per content type. Each content type can have its own prompt and enabled sections.
         </p>
 
-        <div class="prompt-editor">
-          <textarea id="prompt-template" rows="12" placeholder="Enter your custom instructions..."></textarea>
+        <div class="template-selector">
+          <label for="template-type-select">Content Type:</label>
+          <select id="template-type-select">
+            <option value="youtube_video">YouTube Video</option>
+            <option value="article">Article</option>
+            <option value="webpage">Web Page</option>
+            <option value="selected_text">Selected Text</option>
+            <option value="video_with_captions">Video with Captions</option>
+          </select>
         </div>
 
-        <div class="prompt-variables">
-          <h3>Available variables:</h3>
-          <div class="variable-list">
-            <div class="variable">
-              <code>{title}</code>
-              <span>The YouTube video title</span>
-            </div>
-            <div class="variable">
-              <code>{transcript}</code>
-              <span>The full video transcript</span>
-            </div>
+        <div class="template-editor">
+          <h3>Analysis Instructions</h3>
+          <textarea id="prompt-template" rows="8" placeholder="Enter your custom instructions..."></textarea>
+        </div>
+
+        <div class="template-sections">
+          <h3>Output Sections</h3>
+          <p class="section-description" style="margin-bottom: 12px;">Toggle which sections to include in the output. Drag to reorder.</p>
+          <div id="template-sections-list" class="sections-list">
+            <!-- Populated by JS -->
           </div>
         </div>
 
-        <div class="prompt-examples">
-          <h3>Example customizations:</h3>
-          <div class="example-list">
-            <button class="example-btn" data-prompt="Focus on actionable business insights and strategies. Extract learnings that can be immediately applied to grow a business or improve processes.">Business & Strategy</button>
-            <button class="example-btn" data-prompt="Focus on technical concepts and implementation details. Extract learnings about coding patterns, architecture decisions, and best practices.">Technical/Coding</button>
-            <button class="example-btn" data-prompt="Focus on personal development and self-improvement advice. Extract learnings about habits, mindset, and life skills.">Personal Development</button>
-            <button class="example-btn" data-prompt="Focus on key facts, research findings, and educational content. Extract learnings that are backed by evidence or expert knowledge.">Educational/Research</button>
-            <button class="example-btn" data-prompt="Provide a detailed, comprehensive analysis. Include nuances, context, and multiple perspectives. Extract more granular learnings (aim for 10+ points).">Deep Analysis</button>
-            <button class="example-btn" data-prompt="Be extremely concise. Provide a 2-3 sentence summary and only the 3 most critical takeaways.">Quick Summary</button>
+        <div class="template-presets">
+          <h3>Presets</h3>
+          <div id="template-presets-list" class="example-list">
+            <!-- Populated by JS based on content type -->
           </div>
         </div>
       </section>
@@ -71,6 +72,46 @@
             <span>Select action items by default</span>
           </label>
           <p class="setting-hint">When unchecked, action items will be unchecked by default and won't be saved to Reminders unless you manually select them.</p>
+        </div>
+      </section>
+
+      <!-- Claude API Settings -->
+      <section class="setting-section">
+        <h2>Claude API</h2>
+        <p class="section-description">
+          Configure how the extension connects to Claude. By default, it uses OAuth credentials from Claude Code. You can also provide an API key as a fallback.
+        </p>
+
+        <div class="form-group">
+          <label>Auth Status</label>
+          <div class="auth-status" id="auth-status">
+            <span class="auth-status-dot" id="auth-status-dot"></span>
+            <span id="auth-status-text">Checking...</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="anthropic-api-key">Anthropic API Key</label>
+          <div class="password-input-container">
+            <input type="password" id="anthropic-api-key" placeholder="sk-ant-...">
+            <button type="button" id="toggle-anthropic-key" class="toggle-visibility-btn" title="Show/hide API key">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
+          <p class="setting-hint">Only needed if OAuth from Claude Code is not available. Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></p>
+        </div>
+
+        <div class="form-group">
+          <label for="claude-model">Model</label>
+          <select id="claude-model">
+            <option value="sonnet">Claude Sonnet (recommended)</option>
+            <option value="opus">Claude Opus</option>
+            <option value="haiku">Claude Haiku</option>
+          </select>
+          <p class="setting-hint">Sonnet offers the best balance of speed and quality. Opus is more capable but slower. Haiku is fastest but less detailed.</p>
         </div>
       </section>
 
@@ -128,12 +169,13 @@
         <h2>How it works</h2>
         <p class="section-description">
           Your instructions are combined with a system prompt that ensures Claude always outputs in the correct format for the extension to parse.
+          The output sections are dynamically built from the enabled sections in your template.
         </p>
         <div class="format-preview">
           <div class="preview-label">Your instructions +</div>
           <div class="preview-box">
-            <strong>System format (auto-added):</strong>
-            <pre>SUMMARY:
+            <strong>Output format (auto-generated from template):</strong>
+            <pre id="format-preview-content">SUMMARY:
 [2-3 paragraph summary]
 
 KEY LEARNINGS:

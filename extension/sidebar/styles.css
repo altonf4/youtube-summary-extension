@@ -185,6 +185,35 @@ header h1::before {
   -webkit-box-orient: vertical;
 }
 
+.content-metadata {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+}
+
+.content-metadata .meta-site {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.content-metadata .meta-author {
+  color: var(--text-tertiary);
+}
+
+.content-metadata .meta-date {
+  color: var(--text-muted);
+}
+
+.content-metadata span:not(:last-child)::after {
+  content: '\00B7';
+  margin-left: 8px;
+  color: var(--text-muted);
+}
+
 /* ============================================
    Content Area
    ============================================ */

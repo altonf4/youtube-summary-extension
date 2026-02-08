@@ -154,7 +154,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Initialize on install
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('YouTube Summary Extension installed');
+  console.log('AI Summary Extension installed');
+
+  // Create context menu for text selection summarization
+  chrome.contextMenus.create({
+    id: 'summarize-selection',
+    title: 'Summarize with Claude',
+    contexts: ['selection']
+  });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'summarize-selection' && info.selectionText) {
+    // Send message to content script to open sidebar with selected text
+    chrome.tabs.sendMessage(tab.id, {
+      type: 'SUMMARIZE_SELECTION',
+      selectedText: info.selectionText
+    }).catch(() => {});
+  }
 });
 
 // Keep service worker alive by connecting on startup
