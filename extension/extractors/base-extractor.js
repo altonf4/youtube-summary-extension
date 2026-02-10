@@ -11,6 +11,7 @@ let isSidebarOpen = false;
 let bannerDismissedForUrl = null;
 let isAnalyzing = false;
 let analysisComplete = false;
+let pendingAutoGenerate = false;
 
 /**
  * Get the current content type from the detector
@@ -317,10 +318,10 @@ async function createPopupBanner() {
     </button>
   `;
 
-  // Clicking the icon or label opens sidebar
+  // Clicking the icon or label opens sidebar and auto-generates
   const openAction = () => {
     hidePopupBanner(false);
-    openSidebar();
+    openSidebar(true);
   };
   popupBanner.querySelector('.toast-icon').style.cursor = 'pointer';
   popupBanner.querySelector('.toast-icon').onclick = openAction;
@@ -545,7 +546,9 @@ function createSidebar() {
 }
 
 // Open sidebar
-function openSidebar() {
+function openSidebar(autoGenerate = false) {
+  pendingAutoGenerate = autoGenerate;
+
   if (floatingButton) {
     floatingButton.remove();
     floatingButton = null;
@@ -576,11 +579,15 @@ function sendContentInfoToSidebar() {
 
   if (!contentType || contentType === 'unknown') return;
 
+  const autoGenerate = pendingAutoGenerate;
+  pendingAutoGenerate = false;
+
   const iframe = sidebar?.querySelector('iframe');
   if (iframe && iframe.contentWindow) {
     iframe.contentWindow.postMessage({
       type: 'CONTENT_INFO',
       contentType: contentType,
+      autoGenerate: autoGenerate,
       // YouTube-specific fields
       videoId: info.videoId || null,
       // Common fields
@@ -592,7 +599,6 @@ function sendContentInfoToSidebar() {
       author: info.author || null,
       siteName: info.siteName || null,
       publishDate: info.publishDate || null,
-      // For backward compatibility, also send as VIDEO_INFO
     }, '*');
 
     // Also send VIDEO_INFO for backward compatibility with existing sidebar code

@@ -219,6 +219,10 @@ window.addEventListener('message', (event) => {
     if (event.data.links && event.data.links.length > 0) {
       console.log(`Found ${event.data.links.length} links in description`);
     }
+
+    if (event.data.autoGenerate) {
+      handleGenerateSummary();
+    }
   }
 
   if (event.data.type === 'VIDEO_INFO') {
