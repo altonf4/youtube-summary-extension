@@ -37,33 +37,32 @@ function injectStyles() {
   styles.textContent = `
     #content-summary-popup {
       position: fixed;
-      top: 16px;
+      bottom: 20px;
       right: 20px;
       z-index: 10001;
       background: white;
       border-radius: 50px;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
       display: flex;
       align-items: center;
-      padding: 8px 12px 8px 16px;
-      gap: 14px;
+      padding: 6px 6px 6px 14px;
+      gap: 10px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      animation: slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-      max-width: 420px;
+      animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    @keyframes slideDown {
-      from { opacity: 0; transform: translateY(-20px); }
+    @keyframes toastSlideUp {
+      from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
     #content-summary-popup.hiding {
-      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: toastSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
-    @keyframes slideUp {
+    @keyframes toastSlideDown {
       from { opacity: 1; transform: translateY(0); }
-      to { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 0; transform: translateY(12px); }
     }
 
     #content-summary-float-btn {
@@ -177,72 +176,32 @@ function injectStyles() {
       to { transform: scale(1); opacity: 1; }
     }
 
-    #content-summary-popup .popup-icon {
-      width: 36px;
-      height: 36px;
-      background: #f3f4f6;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-
-    #content-summary-popup .popup-icon svg {
-      width: 20px;
-      height: 20px;
+    #content-summary-popup .toast-icon {
+      width: 18px;
+      height: 18px;
       color: #374151;
-    }
-
-    #content-summary-popup .popup-content {
-      flex: 1;
-      min-width: 0;
-    }
-
-    #content-summary-popup .popup-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #111827;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #content-summary-popup .popup-subtitle {
-      font-size: 12px;
-      color: #6b7280;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #content-summary-popup .popup-btn {
-      background: #111827;
-      color: white;
-      border: none;
-      border-radius: 20px;
-      padding: 10px 18px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.15s;
       flex-shrink: 0;
     }
 
-    #content-summary-popup .popup-btn:hover {
-      background: #374151;
-      transform: scale(1.02);
+    #content-summary-popup .toast-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #374151;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color 0.15s;
     }
 
-    #content-summary-popup .popup-btn:active {
-      transform: scale(0.98);
+    #content-summary-popup .toast-label:hover {
+      color: #111827;
     }
 
     #content-summary-popup .popup-close {
       background: none;
       border: none;
-      padding: 6px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
       cursor: pointer;
       color: #9ca3af;
       border-radius: 50%;
@@ -318,11 +277,23 @@ function getPopupText(contentType) {
   }
 }
 
-// Create popup banner
-function createPopupBanner() {
+// Create popup banner (compact toast)
+async function createPopupBanner() {
   const contentType = getContentType();
   const currentUrl = location.href;
   if (popupBanner || !contentType || contentType === 'unknown' || bannerDismissedForUrl === currentUrl) return;
+
+  // Check if already dismissed this browser session
+  try {
+    const session = await chrome.storage.session.get(['toastDismissed']);
+    if (session.toastDismissed) {
+      // Session-dismissed: skip toast, show floating button directly
+      createFloatingButton();
+      return;
+    }
+  } catch {
+    // chrome.storage.session not available, continue normally
+  }
 
   injectStyles();
 
@@ -331,34 +302,34 @@ function createPopupBanner() {
   popupBanner = document.createElement('div');
   popupBanner.id = 'content-summary-popup';
   popupBanner.innerHTML = `
-    <div class="popup-icon">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-        <polyline points="14 2 14 8 20 8"></polyline>
-        <line x1="16" y1="13" x2="8" y2="13"></line>
-        <line x1="16" y1="17" x2="8" y2="17"></line>
-      </svg>
-    </div>
-    <div class="popup-content">
-      <div class="popup-title">${text.title}</div>
-      <div class="popup-subtitle">${text.subtitle}</div>
-    </div>
-    <button class="popup-btn">${text.buttonText}</button>
+    <svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+    </svg>
+    <span class="toast-label">${text.buttonText}</span>
     <button class="popup-close" title="Dismiss">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <line x1="18" y1="6" x2="6" y2="18"></line>
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     </button>
   `;
 
-  popupBanner.querySelector('.popup-btn').onclick = () => {
+  // Clicking the icon or label opens sidebar
+  const openAction = () => {
     hidePopupBanner(false);
     openSidebar();
   };
+  popupBanner.querySelector('.toast-icon').style.cursor = 'pointer';
+  popupBanner.querySelector('.toast-icon').onclick = openAction;
+  popupBanner.querySelector('.toast-label').onclick = openAction;
 
   popupBanner.querySelector('.popup-close').onclick = () => {
     bannerDismissedForUrl = currentUrl;
+    // Dismiss for entire browser session
+    try { chrome.storage.session.set({ toastDismissed: true }); } catch {}
     hidePopupBanner(true);
   };
 

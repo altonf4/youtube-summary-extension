@@ -644,6 +644,22 @@ sidebar.js (updateProgressUI)
 - `native-host/claude-bridge.js` — `buildOutputFormat()`, `getParseLabels()`, template-driven parsing
 - `native-host/claude-bridge.test.js` — 11 new tests for template functions
 
+### 27. Compact Toast with Session-Based Dismissal
+**Request:** The popup banner appearing on every page navigation is intrusive. Want it for discoverability but not blocking the view constantly.
+
+**Implementation:**
+- **Compact Toast:** Replaced the large banner (icon + title + subtitle + button + close) with a small pill in the bottom-right corner containing just an icon, "Summarize" label, and close button (~150px wide)
+- **Browser Session Tracking:** Uses `chrome.storage.session` to track dismissal across all tabs. Once dismissed, the toast stays hidden for the entire browser session (until Chrome restarts). On subsequent page navigations, the floating button is shown directly instead of the toast.
+- **Behavior flow:**
+  - First page in session: compact toast appears in bottom-right
+  - User clicks toast: opens sidebar
+  - User clicks X: toast dismissed for entire session, floating button shown
+  - Subsequent pages: floating button shown directly (no toast)
+  - Browser restart: toast appears again on first page
+
+**Files Modified:**
+- `extension/extractors/base-extractor.js` — Toast UI, CSS, session tracking logic
+
 ---
 
 ## Pending / Future Ideas
