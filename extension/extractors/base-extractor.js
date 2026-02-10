@@ -37,7 +37,7 @@ function injectStyles() {
   styles.textContent = `
     #content-summary-popup {
       position: fixed;
-      bottom: 20px;
+      top: 16px;
       right: 20px;
       z-index: 10001;
       background: white;
@@ -48,21 +48,21 @@ function injectStyles() {
       padding: 6px 6px 6px 14px;
       gap: 10px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: toastSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    @keyframes toastSlideUp {
-      from { opacity: 0; transform: translateY(12px); }
+    @keyframes toastSlideDown {
+      from { opacity: 0; transform: translateY(-12px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
     #content-summary-popup.hiding {
-      animation: toastSlideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: toastSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
-    @keyframes toastSlideDown {
+    @keyframes toastSlideUp {
       from { opacity: 1; transform: translateY(0); }
-      to { opacity: 0; transform: translateY(12px); }
+      to { opacity: 0; transform: translateY(-12px); }
     }
 
     #content-summary-float-btn {
