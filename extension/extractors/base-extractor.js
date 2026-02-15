@@ -704,6 +704,15 @@ function closeSidebar() {
   isSidebarOpen = false;
   sidebar.style.transform = 'translateX(100%)';
   sidebar.classList.remove('open');
+
+  // Remove sidebar from DOM after slide-out animation to prevent
+  // any residual event capture blocking page scroll
+  setTimeout(() => {
+    if (sidebar && !isSidebarOpen) {
+      sidebar.remove();
+      sidebar = null;
+    }
+  }, 350);
 }
 
 /**
