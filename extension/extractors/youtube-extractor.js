@@ -187,26 +187,6 @@
   // Open the transcript panel
   async function openTranscriptPanel() {
     const scrollY = window.scrollY;
-    const originalHtmlOverflow = document.documentElement.style.overflow;
-    const originalBodyOverflow = document.body.style.overflow;
-    const originalHtmlPosition = document.documentElement.style.position;
-    const originalHtmlTop = document.documentElement.style.top;
-    const originalHtmlWidth = document.documentElement.style.width;
-
-    document.documentElement.style.position = 'fixed';
-    document.documentElement.style.top = `-${scrollY}px`;
-    document.documentElement.style.width = '100%';
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-
-    const unlockScroll = () => {
-      document.documentElement.style.position = originalHtmlPosition;
-      document.documentElement.style.top = originalHtmlTop;
-      document.documentElement.style.width = originalHtmlWidth;
-      document.documentElement.style.overflow = originalHtmlOverflow;
-      document.body.style.overflow = originalBodyOverflow;
-      window.scrollTo(0, scrollY);
-    };
 
     try {
       const moreButton = document.querySelector('#expand, tp-yt-paper-button#expand');
@@ -220,7 +200,7 @@
       if (showTranscriptButton) {
         showTranscriptButton.click();
         await sleep(1000);
-        unlockScroll();
+        window.scrollTo(0, scrollY);
         return;
       }
 
@@ -228,7 +208,7 @@
       if (transcriptButtonAlt) {
         transcriptButtonAlt.click();
         await sleep(1000);
-        unlockScroll();
+        window.scrollTo(0, scrollY);
         return;
       }
 
@@ -242,16 +222,15 @@
           if (item.textContent.toLowerCase().includes('transcript')) {
             item.click();
             await sleep(1000);
-            unlockScroll();
+            window.scrollTo(0, scrollY);
             return;
           }
         }
       }
 
-      unlockScroll();
       throw new Error('Could not find "Show transcript" button. Please manually click "Show transcript" under the video description.');
     } catch (error) {
-      unlockScroll();
+      window.scrollTo(0, scrollY);
       throw error;
     }
   }
