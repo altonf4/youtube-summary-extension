@@ -308,6 +308,11 @@ function injectStyles() {
       z-index: 10000;
       transform: translateX(100%);
       transition: transform 0.3s ease;
+      pointer-events: none;
+    }
+
+    #content-summary-sidebar.open {
+      pointer-events: auto;
     }
 
     #content-summary-sidebar iframe {
@@ -688,6 +693,7 @@ function openSidebar(autoGenerate = false) {
 
   isSidebarOpen = true;
   sidebar.style.transform = 'translateX(0)';
+  sidebar.classList.add('open');
 }
 
 // Close sidebar
@@ -695,6 +701,7 @@ function closeSidebar() {
   if (!sidebar) return;
   isSidebarOpen = false;
   sidebar.style.transform = 'translateX(100%)';
+  sidebar.classList.remove('open');
 }
 
 /**
