@@ -50,6 +50,43 @@ function injectStyles() {
       gap: 10px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      overflow: hidden;
+    }
+
+    /* Shimmer line sweep for first-time discoverability */
+    #content-summary-popup::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 50%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(102, 126, 234, 0.25),
+        rgba(102, 126, 234, 0.4),
+        rgba(102, 126, 234, 0.25),
+        transparent
+      );
+      animation: shimmer 1.4s ease-in-out 0.6s 3;
+      pointer-events: none;
+    }
+
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 150%; }
+    }
+
+    /* Gentle pulse glow to draw attention */
+    #content-summary-popup.attention {
+      animation: toastSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                 pulseGlow 2s ease-in-out 0.5s 2;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05); }
+      50% { box-shadow: 0 2px 20px rgba(102, 126, 234, 0.35), 0 0 0 2px rgba(102, 126, 234, 0.2); }
     }
 
     @keyframes toastSlideUp {
@@ -64,6 +101,50 @@ function injectStyles() {
     @keyframes toastSlideDown {
       from { opacity: 1; transform: translateY(0); }
       to { opacity: 0; transform: translateY(12px); }
+    }
+
+    /* Onboarding tooltip */
+    #content-summary-onboarding {
+      position: fixed;
+      bottom: 62px;
+      right: 20px;
+      z-index: 10002;
+      background: #111827;
+      color: white;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      max-width: 220px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      animation: tooltipFadeIn 0.4s ease-out 0.8s both;
+    }
+
+    #content-summary-onboarding::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      right: 24px;
+      width: 12px;
+      height: 12px;
+      background: #111827;
+      transform: rotate(45deg);
+    }
+
+    @keyframes tooltipFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    #content-summary-onboarding.hiding {
+      animation: tooltipFadeOut 0.3s ease-in forwards;
+    }
+
+    @keyframes tooltipFadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
     }
 
     #content-summary-float-btn {
@@ -320,6 +401,12 @@ async function createPopupBanner() {
 
   // Clicking the icon or label opens sidebar and auto-generates
   const openAction = () => {
+    // Track usage so attention animation stops after familiarity
+    try {
+      chrome.storage.local.get(['toastClickCount'], (result) => {
+        chrome.storage.local.set({ toastClickCount: (result.toastClickCount || 0) + 1 });
+      });
+    } catch {}
     hidePopupBanner(false);
     openSidebar(true);
   };
@@ -335,6 +422,47 @@ async function createPopupBanner() {
   };
 
   document.body.appendChild(popupBanner);
+
+  // Add attention animation and onboarding tooltip for new users
+  try {
+    chrome.storage.local.get(['toastClickCount'], (result) => {
+      const clicks = result.toastClickCount || 0;
+      if (clicks < 5 && popupBanner) {
+        popupBanner.classList.add('attention');
+      }
+      // Show onboarding tooltip for first-time users
+      if (clicks === 0) {
+        showOnboardingTooltip();
+      }
+    });
+  } catch {}
+}
+
+// Show onboarding tooltip above the toast for first-time users
+function showOnboardingTooltip() {
+  const tooltip = document.createElement('div');
+  tooltip.id = 'content-summary-onboarding';
+  tooltip.textContent = 'Click here to summarize this page with AI';
+  document.body.appendChild(tooltip);
+
+  // Auto-dismiss after 5 seconds
+  setTimeout(() => {
+    if (tooltip.parentNode) {
+      tooltip.classList.add('hiding');
+      setTimeout(() => tooltip.remove(), 300);
+    }
+  }, 5000);
+
+  // Also dismiss when toast is clicked or closed
+  const dismiss = () => {
+    if (tooltip.parentNode) {
+      tooltip.classList.add('hiding');
+      setTimeout(() => tooltip.remove(), 300);
+    }
+  };
+  if (popupBanner) {
+    popupBanner.addEventListener('click', dismiss, { once: true });
+  }
 }
 
 // Hide popup banner with animation
