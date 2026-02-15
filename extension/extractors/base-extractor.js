@@ -307,12 +307,14 @@ function injectStyles() {
       height: 100vh;
       z-index: 10000;
       transform: translateX(100%);
-      transition: transform 0.3s ease;
+      transition: transform 0.3s ease, visibility 0.3s;
       pointer-events: none;
+      visibility: hidden;
     }
 
     #content-summary-sidebar.open {
       pointer-events: auto;
+      visibility: visible;
     }
 
     #content-summary-sidebar iframe {
