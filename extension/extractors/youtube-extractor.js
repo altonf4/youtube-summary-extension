@@ -13,8 +13,21 @@
 
   // Extract video title from page
   function getVideoTitle() {
-    const titleElement = document.querySelector('h1.ytd-watch-metadata yt-formatted-string');
-    return titleElement ? titleElement.textContent : 'Unknown Title';
+    const selectors = [
+      'h1.ytd-watch-metadata yt-formatted-string',
+      'h1.ytd-video-primary-info-renderer yt-formatted-string',
+      '#title h1 yt-formatted-string',
+      'ytd-watch-metadata h1',
+      '#above-the-fold #title',
+      'h1.title'
+    ];
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (el && el.textContent.trim()) {
+        return el.textContent.trim();
+      }
+    }
+    return document.title.replace(/ - YouTube$/, '').trim() || 'Unknown Title';
   }
 
   // Extract video description from page
