@@ -3,6 +3,7 @@
 let currentVideoInfo = null;
 let currentContentType = 'youtube_video'; // Default for backward compatibility
 let currentSummary = null;
+let currentGenerationId = 0; // Tracks which summary generation is active
 let selectedLearnings = new Set();
 let currentNoteId = null; // Cached note ID for updating existing notes
 let currentReminderIds = []; // Cached reminder IDs for updating existing reminders
@@ -216,6 +217,14 @@ window.addEventListener('message', (event) => {
     videoTitle.textContent = event.data.title;
     updateUIForContentType(currentContentType, event.data);
 
+    // Reset state for new content (handles mid-generation navigation)
+    currentSummary = null;
+    currentNoteId = null;
+    cachedTranscript = null;
+    cachedAudioData = null;
+    resetProgressUI();
+    showSection(generateSection);
+
     if (event.data.links && event.data.links.length > 0) {
       console.log(`Found ${event.data.links.length} links in description`);
     }
@@ -243,7 +252,10 @@ window.addEventListener('message', (event) => {
   }
 
   if (event.data.type === 'PROGRESS_UPDATE') {
-    updateProgressUI(event.data.progress);
+    // Only process progress updates if we're actively loading
+    if (loadingSection.style.display !== 'none') {
+      updateProgressUI(event.data.progress);
+    }
   }
 });
 
@@ -437,6 +449,9 @@ async function handleGenerateSummary() {
     return;
   }
 
+  // Increment generation ID so stale responses from previous videos are ignored
+  const thisGenerationId = ++currentGenerationId;
+
   resetProgressUI();
   showSection(loadingSection);
 
@@ -446,6 +461,9 @@ async function handleGenerateSummary() {
   try {
     // Step 1: Get transcript from content script (scrapes YouTube DOM)
     const transcriptResult = await requestTranscript();
+
+    // Abort if a newer generation started while we were waiting
+    if (thisGenerationId !== currentGenerationId) return;
 
     if (!transcriptResult.success) {
       throw new Error(transcriptResult.error || 'Failed to extract transcript');
@@ -490,6 +508,9 @@ async function handleGenerateSummary() {
       publishDate: currentVideoInfo.publishDate || null
     });
 
+    // Abort if a newer generation started while we were waiting
+    if (thisGenerationId !== currentGenerationId) return;
+
     if (response.success) {
       currentSummary = response;
       displaySummary(response.summary, response.keyLearnings, response.relevantLinks || []);
@@ -501,6 +522,8 @@ async function handleGenerateSummary() {
       throw new Error(response.error || 'Failed to generate summary');
     }
   } catch (error) {
+    // Ignore errors from stale generations
+    if (thisGenerationId !== currentGenerationId) return;
     console.error('Error generating summary:', error);
     showError(error.message || 'Failed to generate summary. Please try again.');
     // Notify parent that analysis failed (reset state)
