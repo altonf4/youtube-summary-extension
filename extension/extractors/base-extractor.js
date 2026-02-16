@@ -712,9 +712,19 @@ function closeSidebar() {
  */
 function sendContentInfoToSidebar() {
   const contentType = getContentType();
-  const info = getContentInfo();
+  let info = getContentInfo();
 
   if (!contentType || contentType === 'unknown') return;
+
+  // For YouTube, re-gather metadata fresh from DOM to avoid stale titles
+  // after SPA navigation
+  if (contentType === 'youtube_video' && window.__youtubeExtractor) {
+    const freshMeta = window.__youtubeExtractor.gatherMetadata();
+    if (freshMeta) {
+      info = freshMeta;
+      window.__contentSummaryInfo = freshMeta;
+    }
+  }
 
   const autoGenerate = pendingAutoGenerate;
   pendingAutoGenerate = false;
