@@ -432,7 +432,8 @@ async function loadSettings() {
 
     // Provider selection
     if (providerSelect) {
-      providerSelect.value = result.aiProvider === 'codex' ? 'codex' : 'claude';
+      const stored = result.aiProvider;
+      providerSelect.value = (stored === 'codex' || stored === 'both') ? stored : 'claude';
       updateProviderUI(providerSelect.value);
     }
 
@@ -673,11 +674,15 @@ function setupAnthropicSettings() {
 
 /**
  * Hide/show provider-specific model controls.
+ *  - claude: Claude model group only
+ *  - codex:  Codex model group only
+ *  - both:   show both groups (each provider needs its own model)
  */
 function updateProviderUI(provider) {
-  const isCodex = provider === 'codex';
-  if (claudeModelGroup) claudeModelGroup.style.display = isCodex ? 'none' : '';
-  if (codexModelGroup) codexModelGroup.style.display = isCodex ? '' : 'none';
+  const showClaude = provider === 'claude' || provider === 'both';
+  const showCodex = provider === 'codex' || provider === 'both';
+  if (claudeModelGroup) claudeModelGroup.style.display = showClaude ? '' : 'none';
+  if (codexModelGroup) codexModelGroup.style.display = showCodex ? '' : 'none';
 }
 
 if (providerSelect) {

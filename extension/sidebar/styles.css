@@ -1373,6 +1373,172 @@ header h1::before {
 }
 
 /* ============================================
+   Compare panel (provider='both' read-only secondary)
+   ============================================ */
+
+.compare-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.compare-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.compare-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  flex: 1;
+}
+
+.compare-header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.compare-btn {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.compare-btn:hover {
+  color: var(--success-text);
+  background: var(--success-light);
+  border-color: var(--success);
+}
+
+.compare-loading {
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.compare-error {
+  padding: 14px 16px;
+  color: #ef4444;
+  font-size: 13px;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.compare-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.compare-body.collapsed {
+  display: none;
+}
+
+.compare-section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.compare-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.compare-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.compare-list li {
+  margin: 3px 0;
+}
+
+/* ============================================
+   Multi-provider chat (provider='both')
+   ============================================ */
+
+.chat-reply-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.chat-provider-tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  align-self: flex-start;
+  margin-bottom: 2px;
+}
+
+.chat-provider-tag-claude {
+  background: rgba(217, 119, 87, 0.15);
+  color: #d97757;
+  border: 1px solid rgba(217, 119, 87, 0.3);
+}
+
+.chat-provider-tag-codex {
+  background: rgba(16, 163, 127, 0.15);
+  color: #10a37f;
+  border: 1px solid rgba(16, 163, 127, 0.3);
+}
+
+.chat-provider-claude .chat-bubble {
+  border-left: 3px solid #d97757;
+}
+
+.chat-provider-codex .chat-bubble {
+  border-left: 3px solid #10a37f;
+}
+
+.chat-bubble-pending {
+  font-style: italic;
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+.chat-bubble-error {
+  background: rgba(239, 68, 68, 0.08) !important;
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* ============================================
    Relevant Links
    ============================================ */
 .relevant-links {

@@ -74,6 +74,19 @@ function init() {
   // Chat-specific UI (mode toggle, clear button, keyboard shortcuts)
   setupChatUI();
 
+  // Compare-panel buttons
+  const promoteBtn = document.getElementById('compare-promote-btn');
+  if (promoteBtn) promoteBtn.addEventListener('click', promoteCompareResult);
+  const compareToggleBtn = document.getElementById('compare-toggle-btn');
+  if (compareToggleBtn) {
+    compareToggleBtn.addEventListener('click', () => {
+      const body = document.getElementById('compare-body');
+      if (!body) return;
+      const collapsed = body.classList.toggle('collapsed');
+      compareToggleBtn.classList.toggle('expanded', !collapsed);
+    });
+  }
+
   // Summary toggle button
   document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
 
@@ -203,13 +216,17 @@ async function loadTemplateConfig() {
 async function loadApiSettings() {
   try {
     const result = await chrome.storage.sync.get(['claudeModel', 'aiProvider', 'codexModel']);
-    const provider = result.aiProvider === 'codex' ? 'codex' : 'claude';
+    const stored = result.aiProvider;
+    const provider = (stored === 'codex' || stored === 'both') ? stored : 'claude';
+    const claudeModel = result.claudeModel || 'sonnet';
+    const codexModel = (result.codexModel || '').trim() || null;
     return {
       provider,
-      claudeModel: result.claudeModel || 'sonnet',
-      codexModel: (result.codexModel || '').trim() || null,
+      claudeModel,
+      codexModel,
       // Convenience: which model string to send for the active provider.
-      model: provider === 'codex' ? ((result.codexModel || '').trim() || null) : (result.claudeModel || 'sonnet')
+      // In 'both' mode, callers should fan out and pass per-provider models.
+      model: provider === 'codex' ? codexModel : claudeModel
     };
   } catch (error) {
     console.error('Error loading API settings:', error);
@@ -254,6 +271,7 @@ window.addEventListener('message', (event) => {
     chatHistory = [];
     currentChatKey = null;
     renderChatHistory();
+    showComparePanel(false);
     resetProgressUI();
     showSection(generateSection);
 
@@ -607,38 +625,80 @@ async function handleGenerateSummary() {
     const apiSettings = await loadApiSettings();
 
     // Step 2: Send transcript to native host for inference.
-    // Apply provider-specific copy first so the progress UI says "Codex is
-    // analyzing..." (not "Claude is analyzing...") when the user picked Codex.
-    applyProviderLabels(apiSettings.provider);
-    // On Safari, kick off a timeline-based fake progress to avoid the UI
-    // looking stuck (Safari can't deliver mid-flight progress events).
-    // Pass an estimated token count so the "~N tokens" readout isn't 0.
+    // For the progress UI we use the *primary* provider's name. In 'both'
+    // mode the primary is Claude (which renders into the editable section);
+    // Codex's run feeds the read-only comparison panel.
+    const primaryProvider = apiSettings.provider === 'codex' ? 'codex' : 'claude';
+    applyProviderLabels(primaryProvider);
+    // Tell the chat renderer whether we're in 'both' mode so future renders
+    // know to use the paired-bubble layout.
+    bothModeCached = (apiSettings.provider === 'both');
     const estimatedTokens = estimateInputTokens(
       transcriptResult.transcript,
       [...(cachedCreatorComments || []), ...(cachedViewerComments || [])]
     );
-    startSafariProgressSimulation({ inputTokens: estimatedTokens, provider: apiSettings.provider });
+    startSafariProgressSimulation({ inputTokens: estimatedTokens, provider: primaryProvider });
+
+    // Build the request payload (everything but provider/model is shared).
+    const baseRequest = {
+      action: 'generateSummary',
+      contentType: currentContentType,
+      videoId: currentVideoInfo.videoId,
+      title: currentVideoInfo.title,
+      transcript: transcriptResult.transcript,
+      description: currentVideoInfo.description || '',
+      descriptionLinks: currentVideoInfo.links || [],
+      creatorComments: cachedCreatorComments,
+      viewerComments: cachedViewerComments,
+      customInstructions: customInstructions,
+      templateSections: templateConfig?.sections || null,
+      author: currentVideoInfo.author || null,
+      siteName: currentVideoInfo.siteName || null,
+      publishDate: currentVideoInfo.publishDate || null
+    };
+
     let response;
     try {
-      response = await sendNativeMessage({
-        action: 'generateSummary',
-        contentType: currentContentType,
-        videoId: currentVideoInfo.videoId,
-        title: currentVideoInfo.title,
-        transcript: transcriptResult.transcript,
-        description: currentVideoInfo.description || '',
-        descriptionLinks: currentVideoInfo.links || [],
-        creatorComments: cachedCreatorComments,
-        viewerComments: cachedViewerComments,
-        customInstructions: customInstructions,
-        templateSections: templateConfig?.sections || null,
-        provider: apiSettings.provider,
-        model: apiSettings.model,
-        // Article-specific fields
-        author: currentVideoInfo.author || null,
-        siteName: currentVideoInfo.siteName || null,
-        publishDate: currentVideoInfo.publishDate || null
-      });
+      if (apiSettings.provider === 'both') {
+        // Fire both providers in parallel. Claude is treated as primary
+        // (renders into the editable section); Codex renders into the
+        // read-only comparison panel below it.
+        showComparePanel(true);
+        showCompareLoading(true, 'codex');
+        const claudePromise = sendNativeMessage({
+          ...baseRequest,
+          provider: 'claude',
+          model: apiSettings.claudeModel
+        });
+        const codexPromise = sendNativeMessage({
+          ...baseRequest,
+          provider: 'codex',
+          model: apiSettings.codexModel
+        });
+
+        // Render Codex into the compare panel as soon as it returns —
+        // independent of whether Claude is still pending.
+        codexPromise.then((codexResp) => {
+          if (thisGenerationId !== currentGenerationId) return;
+          showCompareLoading(false);
+          renderComparePanel('codex', codexResp);
+        }).catch((err) => {
+          if (thisGenerationId !== currentGenerationId) return;
+          showCompareLoading(false);
+          renderComparePanelError('codex', err.message);
+        });
+
+        // The "main" response is Claude's — that's what gates showing the
+        // primary section and what saves/audio operate on.
+        response = await claudePromise;
+      } else {
+        response = await sendNativeMessage({
+          ...baseRequest,
+          provider: apiSettings.provider,
+          model: apiSettings.model
+        });
+        showComparePanel(false);
+      }
     } finally {
       cancelSafariProgressSimulation();
     }
@@ -648,6 +708,9 @@ async function handleGenerateSummary() {
 
     if (response.success) {
       currentSummary = response;
+      // Track which provider's data is currently in the editable panel.
+      // Promote toggles this.
+      currentSummary.provider = apiSettings.provider === 'both' ? 'claude' : apiSettings.provider;
       displaySummary(response.summary, response.keyLearnings, response.relevantLinks || []);
       displayActionItems(response.actionItems || []);
       showSection(summarySection);
@@ -1405,13 +1468,153 @@ async function saveFolderSuggestion(folderName) {
 }
 
 // =====================================
+// COMPARE PANEL: read-only secondary provider result
+// =====================================
+
+// Cached secondary-provider response for the current generation.
+// Populated when provider='both'; consumed by the Promote button.
+let compareResponse = null;
+let compareProvider = null;
+
+/**
+ * Show or hide the entire compare panel container.
+ */
+function showComparePanel(visible) {
+  const panel = document.getElementById('compare-panel');
+  if (panel) panel.style.display = visible ? 'block' : 'none';
+  if (!visible) {
+    compareResponse = null;
+    compareProvider = null;
+  }
+}
+
+/**
+ * Show or hide the loading shimmer inside the compare panel.
+ */
+function showCompareLoading(loading, providerName = null) {
+  const loadingEl = document.getElementById('compare-loading');
+  const body = document.getElementById('compare-body');
+  const errEl = document.getElementById('compare-error');
+  if (loading) {
+    if (errEl) errEl.style.display = 'none';
+    if (body) body.style.display = 'none';
+    if (loadingEl) {
+      loadingEl.style.display = 'flex';
+      const text = document.getElementById('compare-loading-text');
+      if (text && providerName) {
+        text.textContent = `${providerDisplayName(providerName)} is analyzing...`;
+      }
+    }
+  } else if (loadingEl) {
+    loadingEl.style.display = 'none';
+  }
+}
+
+/**
+ * Render an error state in the compare panel (provider failed).
+ */
+function renderComparePanelError(provider, message) {
+  const errEl = document.getElementById('compare-error');
+  const body = document.getElementById('compare-body');
+  const label = document.getElementById('compare-provider-label');
+  if (label) label.textContent = `${providerDisplayName(provider)} result`;
+  if (body) body.style.display = 'none';
+  if (errEl) {
+    errEl.style.display = 'block';
+    errEl.textContent = `${providerDisplayName(provider)} failed: ${message}`;
+  }
+}
+
+/**
+ * Render a successful response into the read-only compare panel.
+ * The data is cached on `compareResponse` so the Promote button can
+ * swap it into the primary editable section.
+ */
+function renderComparePanel(provider, response) {
+  compareProvider = provider;
+  compareResponse = response;
+
+  const label = document.getElementById('compare-provider-label');
+  if (label) label.textContent = `${providerDisplayName(provider)} result`;
+
+  const body = document.getElementById('compare-body');
+  const errEl = document.getElementById('compare-error');
+  if (errEl) errEl.style.display = 'none';
+  if (body) body.style.display = '';
+
+  if (!response || !response.success) {
+    renderComparePanelError(provider, response?.error || 'Unknown error');
+    return;
+  }
+
+  const summaryEl = document.getElementById('compare-summary');
+  if (summaryEl) summaryEl.textContent = response.summary || '';
+
+  const learningsEl = document.getElementById('compare-learnings');
+  if (learningsEl) {
+    learningsEl.innerHTML = '';
+    (response.keyLearnings || []).forEach((l) => {
+      const li = document.createElement('li');
+      li.textContent = l;
+      learningsEl.appendChild(li);
+    });
+  }
+
+  const actionsSection = document.getElementById('compare-actions-section');
+  const actionsEl = document.getElementById('compare-actions');
+  const actions = response.actionItems || [];
+  if (actionsSection && actionsEl) {
+    if (actions.length > 0) {
+      actionsSection.style.display = '';
+      actionsEl.innerHTML = '';
+      actions.forEach((a) => {
+        const li = document.createElement('li');
+        li.textContent = a;
+        actionsEl.appendChild(li);
+      });
+    } else {
+      actionsSection.style.display = 'none';
+    }
+  }
+}
+
+/**
+ * Promote the comparison result into the primary editable section.
+ * Swaps the cached responses so the user can compare both ways.
+ */
+function promoteCompareResult() {
+  if (!compareResponse || !compareResponse.success) return;
+  // Snapshot the current primary so we can swap it into the compare slot.
+  const oldPrimary = currentSummary;
+  const oldPrimaryProvider = currentSummary?.provider || 'claude';
+
+  // Move the comparison result into the primary editable section.
+  currentSummary = { ...compareResponse, provider: compareProvider };
+  displaySummary(compareResponse.summary, compareResponse.keyLearnings, compareResponse.relevantLinks || []);
+  displayActionItems(compareResponse.actionItems || []);
+  applyProviderLabels(compareProvider);
+
+  // Move the old primary into the compare panel so the swap is reversible.
+  if (oldPrimary && oldPrimary.success !== false) {
+    renderComparePanel(oldPrimaryProvider, oldPrimary);
+  }
+}
+
+// =====================================
 // CHAT: Multi-turn conversation
 // =====================================
 
 // In-memory chat history for the current content. Persisted per-content key
 // in chrome.storage.local under `chatHistory.<contentKey>` so the conversation
 // survives sidebar reloads and tab switches.
+//
+// In single-provider mode, only `chatHistory` is used.
+// In 'both' mode, the user's messages live in `chatHistory` (the shared input
+// log), and each provider's assistant replies are kept in
+// `chatHistoryByProvider[provider]` so subsequent turns send each provider
+// only its own conversation context.
 let chatHistory = [];
+let chatHistoryByProvider = { claude: [], codex: [] };
 let currentChatKey = null;
 
 /**
@@ -1427,11 +1630,14 @@ function getChatKey() {
 
 /**
  * Load chat history for the current content into memory + DOM.
+ * Storage shape per key: { messages: [...], byProvider: { claude: [...], codex: [...] } }
+ * Backwards compat: if value is a bare array, treat as the legacy single-thread.
  */
 async function loadChatHistory() {
   const key = getChatKey();
   currentChatKey = key;
   chatHistory = [];
+  chatHistoryByProvider = { claude: [], codex: [] };
   if (!key) {
     renderChatHistory();
     return;
@@ -1439,7 +1645,16 @@ async function loadChatHistory() {
   try {
     const all = await chrome.storage.local.get(['chatHistory']);
     const saved = all.chatHistory && all.chatHistory[key];
-    if (Array.isArray(saved)) chatHistory = saved;
+    if (Array.isArray(saved)) {
+      // Legacy single-thread format
+      chatHistory = saved;
+    } else if (saved && typeof saved === 'object') {
+      chatHistory = Array.isArray(saved.messages) ? saved.messages : [];
+      chatHistoryByProvider = {
+        claude: Array.isArray(saved.byProvider?.claude) ? saved.byProvider.claude : [],
+        codex: Array.isArray(saved.byProvider?.codex) ? saved.byProvider.codex : []
+      };
+    }
   } catch (error) {
     console.error('Error loading chat history:', error);
   }
@@ -1455,7 +1670,10 @@ async function saveChatHistory() {
   try {
     const all = await chrome.storage.local.get(['chatHistory']);
     const map = all.chatHistory || {};
-    map[currentChatKey] = chatHistory;
+    map[currentChatKey] = {
+      messages: chatHistory,
+      byProvider: chatHistoryByProvider
+    };
     await chrome.storage.local.set({ chatHistory: map });
   } catch (error) {
     console.error('Error saving chat history:', error);
@@ -1467,6 +1685,7 @@ async function saveChatHistory() {
  */
 async function clearChatHistory() {
   chatHistory = [];
+  chatHistoryByProvider = { claude: [], codex: [] };
   renderChatHistory();
   if (!currentChatKey) return;
   try {
@@ -1540,64 +1759,145 @@ function renderMarkdown(text) {
 }
 
 /**
+ * Render a single assistant bubble. Used by both single-provider and
+ * 'both' (multi-bubble per turn) rendering paths.
+ */
+function renderAssistantBubble(content, options = {}) {
+  const { provider = null, pending = false, error = false } = options;
+  const wrapper = document.createElement('div');
+  wrapper.className = 'chat-message chat-assistant';
+  if (provider) wrapper.classList.add(`chat-provider-${provider}`);
+
+  if (provider) {
+    const tag = document.createElement('div');
+    tag.className = `chat-provider-tag chat-provider-tag-${provider}`;
+    tag.textContent = providerDisplayName(provider);
+    wrapper.appendChild(tag);
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  if (pending) {
+    bubble.classList.add('chat-bubble-pending');
+    bubble.textContent = `${providerDisplayName(provider) || 'Assistant'} is thinking...`;
+  } else if (error) {
+    bubble.classList.add('chat-bubble-error');
+    bubble.textContent = content;
+  } else {
+    bubble.innerHTML = renderMarkdown(content);
+  }
+  wrapper.appendChild(bubble);
+
+  if (!pending && !error) {
+    const actions = document.createElement('div');
+    actions.className = 'chat-actions';
+
+    const extractBtn = document.createElement('button');
+    extractBtn.className = 'chat-action-btn';
+    extractBtn.textContent = 'Add as learning';
+    extractBtn.title = 'Save this reply as a Key Learning';
+    extractBtn.addEventListener('click', () => {
+      appendNewLearnings([content]);
+      extractBtn.textContent = 'Added';
+      extractBtn.disabled = true;
+    });
+    actions.appendChild(extractBtn);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'chat-action-btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(content);
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      } catch (e) {
+        copyBtn.textContent = 'Failed';
+      }
+    });
+    actions.appendChild(copyBtn);
+
+    wrapper.appendChild(actions);
+  }
+
+  return wrapper;
+}
+
+/**
  * Render the chat history into the .chat-messages container.
+ *
+ * In single-provider mode, `chatHistory` interleaves user/assistant turns
+ * and we render straight through.
+ *
+ * In 'both' mode, `chatHistory` is the user's input log; each user message
+ * is followed by a paired assistant rendering — one bubble per provider,
+ * pulled from `chatHistoryByProvider[<provider>]` at the same turn index.
  */
 function renderChatHistory() {
   const container = document.getElementById('chat-messages');
   if (!container) return;
   container.innerHTML = '';
 
-  for (let i = 0; i < chatHistory.length; i++) {
-    const msg = chatHistory[i];
-    const wrapper = document.createElement('div');
-    wrapper.className = `chat-message chat-${msg.role}`;
+  const inBoth = isBothMode();
 
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble';
-    if (msg.role === 'assistant') {
-      bubble.innerHTML = renderMarkdown(msg.content);
-    } else {
-      bubble.textContent = msg.content;
+  if (!inBoth) {
+    for (const msg of chatHistory) {
+      if (msg.role === 'user') {
+        const w = document.createElement('div');
+        w.className = 'chat-message chat-user';
+        const b = document.createElement('div');
+        b.className = 'chat-bubble';
+        b.textContent = msg.content;
+        w.appendChild(b);
+        container.appendChild(w);
+      } else {
+        container.appendChild(renderAssistantBubble(msg.content));
+      }
     }
-    wrapper.appendChild(bubble);
+  } else {
+    // In 'both' mode chatHistory only stores user turns; assistant replies
+    // live in chatHistoryByProvider[<provider>] in 1:1 order with user turns.
+    let userTurnIdx = 0;
+    for (const msg of chatHistory) {
+      if (msg.role !== 'user') continue;
+      const w = document.createElement('div');
+      w.className = 'chat-message chat-user';
+      const b = document.createElement('div');
+      b.className = 'chat-bubble';
+      b.textContent = msg.content;
+      w.appendChild(b);
+      container.appendChild(w);
 
-    if (msg.role === 'assistant') {
-      const actions = document.createElement('div');
-      actions.className = 'chat-actions';
-
-      const extractBtn = document.createElement('button');
-      extractBtn.className = 'chat-action-btn';
-      extractBtn.textContent = 'Add as learning';
-      extractBtn.title = 'Save this reply as a Key Learning';
-      extractBtn.addEventListener('click', () => {
-        appendNewLearnings([msg.content]);
-        extractBtn.textContent = 'Added';
-        extractBtn.disabled = true;
-      });
-      actions.appendChild(extractBtn);
-
-      const copyBtn = document.createElement('button');
-      copyBtn.className = 'chat-action-btn';
-      copyBtn.textContent = 'Copy';
-      copyBtn.addEventListener('click', async () => {
-        try {
-          await navigator.clipboard.writeText(msg.content);
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-        } catch (e) {
-          copyBtn.textContent = 'Failed';
+      // Paired replies — one per provider for this user turn.
+      const pair = document.createElement('div');
+      pair.className = 'chat-reply-pair';
+      for (const provider of ['claude', 'codex']) {
+        const reply = chatHistoryByProvider[provider]?.[userTurnIdx];
+        if (reply) {
+          pair.appendChild(renderAssistantBubble(reply.content, {
+            provider,
+            error: reply.error === true
+          }));
+        } else {
+          // Pending: kicked off but reply not in yet.
+          pair.appendChild(renderAssistantBubble('', { provider, pending: true }));
         }
-      });
-      actions.appendChild(copyBtn);
-
-      wrapper.appendChild(actions);
+      }
+      container.appendChild(pair);
+      userTurnIdx++;
     }
-
-    container.appendChild(wrapper);
   }
 
-  // Auto-scroll to bottom
   container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Whether the current settings put us in 'both' (compare) mode.
+ * Cached on the chat-mode toggle for synchronous access in render code.
+ */
+let bothModeCached = false;
+function isBothMode() {
+  return bothModeCached === true;
 }
 
 /**
@@ -1707,21 +2007,26 @@ async function handleFollowUp() {
 }
 
 /**
- * Run a single chat turn: append user message, call native host with full
- * conversation context, append assistant reply, persist.
+ * Run a single chat turn.
+ *
+ * Single-provider: send full interleaved history, append the assistant
+ * reply, done.
+ *
+ * 'both' mode: append the user message; fan out to both providers in
+ * parallel, each with the per-provider thread that interleaves all prior
+ * user messages with that provider's prior replies. Render each reply as
+ * it arrives so the user sees the faster one first.
  */
 async function runChatTurn(query, apiSettings) {
-  // Make sure we have the right content key loaded (handles first-ever turn).
   if (currentChatKey !== getChatKey()) {
     await loadChatHistory();
   }
 
-  // Optimistically add the user message and re-render.
-  chatHistory.push({ role: 'user', content: query });
-  renderChatHistory();
-  await saveChatHistory();
+  bothModeCached = (apiSettings.provider === 'both');
 
-  const response = await sendNativeMessage({
+  // Shared base context — every variant of this call sends the same source
+  // material; only the messages array and provider/model differ.
+  const baseChatRequest = {
     action: 'chat',
     title: currentVideoInfo.title,
     url: currentVideoInfo.url || null,
@@ -1731,24 +2036,102 @@ async function runChatTurn(query, apiSettings) {
     keyLearnings: getEditedLearnings(),
     actionItems: getSelectedActionItems().map((a) => a.text),
     creatorComments: cachedCreatorComments || [],
-    viewerComments: cachedViewerComments || [],
-    messages: chatHistory,
-    provider: apiSettings.provider,
-    model: apiSettings.model
-  });
+    viewerComments: cachedViewerComments || []
+  };
 
-  if (!response || !response.success) {
-    // Roll back the optimistic user message so the user can retry without
-    // duplicating it on next attempt.
-    chatHistory.pop();
+  if (!isBothMode()) {
+    // --- Single-provider path ---
+    chatHistory.push({ role: 'user', content: query });
     renderChatHistory();
     await saveChatHistory();
-    throw new Error(response?.error || 'Chat request failed');
+
+    const response = await sendNativeMessage({
+      ...baseChatRequest,
+      messages: chatHistory,
+      provider: apiSettings.provider,
+      model: apiSettings.model
+    });
+
+    if (!response || !response.success) {
+      chatHistory.pop();
+      renderChatHistory();
+      await saveChatHistory();
+      throw new Error(response?.error || 'Chat request failed');
+    }
+
+    chatHistory.push({ role: 'assistant', content: response.reply || '(empty reply)' });
+    renderChatHistory();
+    await saveChatHistory();
+    return;
   }
 
-  chatHistory.push({ role: 'assistant', content: response.reply || '(empty reply)' });
+  // --- 'both' fan-out path ---
+  // Optimistically add the user message and render placeholders for both
+  // providers' replies (renderChatHistory shows "thinking..." bubbles for
+  // turn slots that don't yet have a reply).
+  chatHistory.push({ role: 'user', content: query });
+  const turnIndex = chatHistoryByProvider.claude.length; // index of this new turn
   renderChatHistory();
   await saveChatHistory();
+
+  // Build per-provider message threads: interleave all prior user turns
+  // with that provider's prior assistant replies, then append the new user
+  // message. This gives each provider only its own conversation context.
+  function buildProviderMessages(provider) {
+    const userTurns = chatHistory.filter((m) => m.role === 'user');
+    const assistantTurns = chatHistoryByProvider[provider] || [];
+    const messages = [];
+    for (let i = 0; i < userTurns.length; i++) {
+      messages.push(userTurns[i]);
+      if (i < assistantTurns.length && !assistantTurns[i].error) {
+        messages.push({ role: 'assistant', content: assistantTurns[i].content });
+      }
+    }
+    return messages;
+  }
+
+  const callProvider = async (provider, model) => {
+    try {
+      const resp = await sendNativeMessage({
+        ...baseChatRequest,
+        messages: buildProviderMessages(provider),
+        provider,
+        model
+      });
+      if (!resp || !resp.success) {
+        return { error: true, content: `${providerDisplayName(provider)} failed: ${resp?.error || 'unknown error'}` };
+      }
+      return { error: false, content: resp.reply || '(empty reply)' };
+    } catch (e) {
+      return { error: true, content: `${providerDisplayName(provider)} failed: ${e.message}` };
+    }
+  };
+
+  const claudeP = callProvider('claude', apiSettings.claudeModel);
+  const codexP = callProvider('codex', apiSettings.codexModel);
+
+  // As each reply arrives, slot it into the per-provider history at the
+  // right turn index and re-render. Saves on every update so a closed
+  // sidebar doesn't lose mid-flight replies.
+  const onReply = async (provider, reply) => {
+    chatHistoryByProvider[provider][turnIndex] = reply;
+    renderChatHistory();
+    await saveChatHistory();
+  };
+
+  await Promise.all([
+    claudeP.then((r) => onReply('claude', r)),
+    codexP.then((r) => onReply('codex', r))
+  ]);
+
+  // If both providers errored, surface a single thrown error so the
+  // caller's UI shows the inline error toast. Otherwise keep the user's
+  // message + per-provider error bubbles intact (partial success is fine).
+  const claudeReply = chatHistoryByProvider.claude[turnIndex];
+  const codexReply = chatHistoryByProvider.codex[turnIndex];
+  if (claudeReply?.error && codexReply?.error) {
+    throw new Error('Both providers failed — see error bubbles above');
+  }
 }
 
 /**

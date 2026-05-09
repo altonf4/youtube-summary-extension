@@ -284,6 +284,48 @@
           <div id="relevant-links-list" class="links-list"></div>
         </div>
 
+        <!-- Comparison Panel (only shown in 'both' mode; populated with the
+             non-primary provider's results so users can compare side-by-side.
+             Read-only — to edit/save the comparison version, use "Promote".) -->
+        <div class="compare-panel" id="compare-panel" style="display: none;">
+          <div class="compare-header">
+            <h2>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path>
+              </svg>
+              <span id="compare-provider-label">Codex result</span>
+              <span class="edit-hint">(comparison)</span>
+            </h2>
+            <div class="compare-header-actions">
+              <button id="compare-promote-btn" class="compare-btn" title="Make this the primary editable result">Promote</button>
+              <button id="compare-toggle-btn" class="toggle-btn expanded" title="Show/hide comparison">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="compare-loading" id="compare-loading" style="display: none;">
+            <div class="follow-up-spinner"></div>
+            <span id="compare-loading-text">Generating with secondary provider...</span>
+          </div>
+          <div class="compare-error" id="compare-error" style="display: none;"></div>
+          <div class="compare-body" id="compare-body">
+            <div class="compare-section">
+              <h3>Summary</h3>
+              <div id="compare-summary" class="compare-text"></div>
+            </div>
+            <div class="compare-section">
+              <h3>Key Learnings</h3>
+              <ul id="compare-learnings" class="compare-list"></ul>
+            </div>
+            <div class="compare-section" id="compare-actions-section" style="display: none;">
+              <h3>Action Items</h3>
+              <ul id="compare-actions" class="compare-list"></ul>
+            </div>
+          </div>
+        </div>
+
         <!-- Custom Notes Section -->
         <div class="custom-notes-section">
           <h2>Your Notes</h2>
