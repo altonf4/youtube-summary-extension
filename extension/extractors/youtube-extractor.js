@@ -162,29 +162,47 @@
 
   // Extract transcript from YouTube's DOM
   async function extractTranscript() {
-    let transcriptPanel = document.querySelector('ytd-transcript-segment-list-renderer');
+    // Open the transcript panel if no segments are visible yet
+    let segments = getTranscriptSegments();
 
-    if (!transcriptPanel) {
+    if (segments.length === 0) {
       await openTranscriptPanel();
-      await waitForElement('ytd-transcript-segment-list-renderer', 10000);
-      transcriptPanel = document.querySelector('ytd-transcript-segment-list-renderer');
-    }
 
-    if (!transcriptPanel) {
-      throw new Error('Could not open transcript panel. This video may not have captions available.');
-    }
+      // Wait for an engagement panel to appear. YouTube has multiple panel IDs:
+      //   - engagement-panel-searchable-transcript: legacy transcript panel
+      //   - PAmodern_transcript_view: 2025+ modern transcript panel
+      //   - engagement-panel-macro-markers-description-chapters: "In this video"
+      //     panel with Chapters/Transcript tabs (videos that have chapters)
+      try {
+        await Promise.any([
+          waitForElement('ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-searchable-transcript"]', 10000),
+          waitForElement('ytd-engagement-panel-section-list-renderer[target-id="PAmodern_transcript_view"]', 10000),
+          waitForElement('ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-macro-markers-description-chapters"]', 10000)
+        ]);
+      } catch (e) {
+        // No panel appeared
+      }
 
-    const segments = document.querySelectorAll('ytd-transcript-segment-renderer');
+      // If the panel has Chapters/Transcript tabs (videos with chapters),
+      // click the Transcript tab. Must wait for the panel to render its chips.
+      await selectTranscriptTab();
+
+      // Poll for transcript segments to appear. YouTube lazily renders them
+      // and MutationObserver doesn't reliably catch their appearance.
+      segments = await pollForTranscriptSegments(15000);
+    }
 
     if (segments.length === 0) {
       throw new Error('No transcript segments found. This video may not have captions.');
     }
 
+    const isNewLayout = segments[0].tagName.toLowerCase() === 'transcript-segment-view-model';
+
     const transcriptParts = [];
     segments.forEach(segment => {
-      const textElement = segment.querySelector('.segment-text');
-      if (textElement) {
-        transcriptParts.push(textElement.textContent.trim());
+      const text = extractSegmentText(segment, isNewLayout);
+      if (text) {
+        transcriptParts.push(text);
       }
     });
 
@@ -195,6 +213,71 @@
     }
 
     return fullTranscript;
+  }
+
+  // Get transcript segments using new or legacy selectors
+  function getTranscriptSegments() {
+    const newSegments = document.querySelectorAll('transcript-segment-view-model');
+    if (newSegments.length > 0) return newSegments;
+    return document.querySelectorAll('ytd-transcript-segment-renderer');
+  }
+
+  // Extract caption text from a single segment, robust to YouTube class renames.
+  // Modern (2025+): <span class="ytAttributedStringHost" role="text">text</span>
+  // Legacy: <div class="segment-text">text</div>
+  function extractSegmentText(segment, isNewLayout) {
+    if (isNewLayout) {
+      // Try selectors in order from most specific to most general so we keep
+      // working when YouTube renames things.
+      const selectors = [
+        '.ytAttributedStringHost',
+        '.yt-core-attributed-string',
+        'span[role="text"]'
+      ];
+      for (const sel of selectors) {
+        const el = segment.querySelector(sel);
+        if (el) {
+          const text = el.textContent.trim();
+          if (text) return text;
+        }
+      }
+      // Last resort: strip out timestamp nodes and take the rest. Keeps us
+      // working even if YouTube changes every span class name.
+      const clone = segment.cloneNode(true);
+      clone.querySelectorAll(
+        '.ytwTranscriptSegmentViewModelTimestamp,' +
+        '.ytwTranscriptSegmentViewModelTimestampA11yLabel,' +
+        '[class*="Timestamp"]'
+      ).forEach(el => el.remove());
+      return clone.textContent.trim();
+    }
+    const textElement = segment.querySelector('.segment-text');
+    return textElement ? textElement.textContent.trim() : '';
+  }
+
+  // Poll for transcript segments to appear AND have extractable text. YouTube
+  // creates the view-model elements and populates their caption text in two
+  // separate render passes, so just checking for existence is a race.
+  function pollForTranscriptSegments(timeout) {
+    return new Promise((resolve) => {
+      const deadline = Date.now() + timeout;
+      function check() {
+        const segments = getTranscriptSegments();
+        if (segments.length > 0) {
+          const isNewLayout = segments[0].tagName.toLowerCase() === 'transcript-segment-view-model';
+          if (extractSegmentText(segments[0], isNewLayout)) {
+            resolve(segments);
+            return;
+          }
+        }
+        if (Date.now() >= deadline) {
+          resolve(segments); // resolve even if content never populated
+          return;
+        }
+        setTimeout(check, 200);
+      }
+      check();
+    });
   }
 
   // Open the transcript panel
@@ -245,6 +328,36 @@
     } catch (error) {
       window.scrollTo(0, scrollY);
       throw error;
+    }
+  }
+
+  // When a video has chapters, clicking "Show transcript" may open the
+  // "In this video" panel (engagement-panel-macro-markers-description-chapters)
+  // with Chapters/Transcript tabs, defaulting to Chapters. This function
+  // finds and clicks the Transcript tab in whichever panel contains it.
+  async function selectTranscriptTab() {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      // Search ALL engagement panels for Chapters/Transcript tab chips
+      const panels = document.querySelectorAll('ytd-engagement-panel-section-list-renderer');
+      let transcriptChip = null;
+      for (const panel of panels) {
+        const chips = panel.querySelectorAll('chip-view-model button, chip-shape button, button[role="tab"]');
+        for (const chip of chips) {
+          if (chip.textContent.trim() === 'Transcript') {
+            transcriptChip = chip;
+            break;
+          }
+        }
+        if (transcriptChip) break;
+      }
+      if (transcriptChip) {
+        if (transcriptChip.getAttribute('aria-selected') === 'true') return;
+        transcriptChip.click();
+        await sleep(500);
+        return;
+      }
+      await sleep(200);
     }
   }
 
