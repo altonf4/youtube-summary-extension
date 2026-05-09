@@ -117,16 +117,16 @@ function callCodex(prompt, onProgress = () => {}, options = {}) {
 
     onProgress({ stage: 'starting', message: 'Starting Codex CLI...' });
 
-    // Codex defaults to gpt-5; allow override via options.model.
+    // Default to gpt-5.5 explicitly so the extension's behavior doesn't
+    // drift if the user changes their codex config.toml default. Caller
+    // can override via options.model.
     const args = [
       'exec',
       '--skip-git-repo-check',
       '--color', 'never',
-      '--ephemeral'
+      '--ephemeral',
+      '-m', options.model || 'gpt-5.5'
     ];
-    if (options.model) {
-      args.push('-m', options.model);
-    }
 
     // Final message lands in this file — much cleaner than parsing stdout.
     const tmpFile = path.join(os.tmpdir(), `codex-out-${process.pid}-${Date.now()}.txt`);

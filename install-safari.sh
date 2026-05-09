@@ -161,6 +161,16 @@ echo -e "${GREEN}✓${NC} Installed: $INSTALL_DEST"
 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister \
     -f "$INSTALL_DEST" >/dev/null 2>&1 || true
 
+# Clean up the workspace build artifact. macOS auto-registers any .app it finds
+# anywhere on disk, so leaving the Release build under safari/.../build/ would
+# cause Safari to show the extension twice (once for /Applications and once for
+# the workspace copy). The build dir is intermediate output anyway — every
+# install-safari.sh run regenerates it.
+LSR=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
+"$LSR" -u "$APP_BUNDLE" >/dev/null 2>&1 || true
+rm -rf "$DERIVED_DATA"
+echo -e "${GREEN}✓${NC} Cleaned up build artifacts"
+
 # --- Write bridge config ---------------------------------------------------
 
 echo ""

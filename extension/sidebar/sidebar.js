@@ -383,20 +383,43 @@ function estimateInputTokens(transcript, comments = []) {
 }
 
 /**
+ * Human-readable name for the active provider. Used in progress labels so
+ * the UI says "Codex is analyzing..." when the user picked Codex.
+ */
+function providerDisplayName(provider) {
+  return provider === 'codex' ? 'Codex' : 'Claude';
+}
+
+/**
+ * Apply provider-specific copy to the progress stage labels and any other
+ * static UI strings that mention the model brand. Called whenever a request
+ * is about to start so the labels reflect the *active* provider for *this*
+ * request, not whatever was selected when the sidebar first loaded.
+ */
+function applyProviderLabels(provider) {
+  const name = providerDisplayName(provider);
+  const sending = document.getElementById('stage-label-sending');
+  const waiting = document.getElementById('stage-label-waiting');
+  if (sending) sending.textContent = `Sending to ${name}`;
+  if (waiting) waiting.textContent = `${name} is analyzing...`;
+}
+
+/**
  * Drive the multi-stage progress UI on a fixed timeline. Safari can't
  * deliver real progress events mid-flight; this gives the user honest-feeling
  * feedback that something's happening, including a rough token count for
  * the `waiting` stage so the "~0 tokens" hole goes away.
  */
-function startSafariProgressSimulation({ inputTokens = 0 } = {}) {
+function startSafariProgressSimulation({ inputTokens = 0, provider = 'claude' } = {}) {
   if (!IS_SAFARI) return;
   cancelSafariProgressSimulation();
+  const name = providerDisplayName(provider);
   // Stages we synthesize. Times tuned to typical CLI-mode runs: most of the
-  // wall clock is in `waiting` while Claude streams its response.
+  // wall clock is in `waiting` while the model streams its response.
   const schedule = [
     { delayMs: 0,    stage: 'preparing', message: 'Preparing transcript...' },
-    { delayMs: 800,  stage: 'sending',   message: 'Sending to Claude...',  inputTokens },
-    { delayMs: 1800, stage: 'waiting',   message: 'Claude is analyzing...', inputTokens },
+    { delayMs: 800,  stage: 'sending',   message: `Sending to ${name}...`,  inputTokens },
+    { delayMs: 1800, stage: 'waiting',   message: `${name} is analyzing...`, inputTokens },
   ];
   for (const event of schedule) {
     const t = setTimeout(() => {
@@ -583,7 +606,10 @@ async function handleGenerateSummary() {
     const templateConfig = await loadTemplateConfig();
     const apiSettings = await loadApiSettings();
 
-    // Step 2: Send transcript to native host for Claude processing.
+    // Step 2: Send transcript to native host for inference.
+    // Apply provider-specific copy first so the progress UI says "Codex is
+    // analyzing..." (not "Claude is analyzing...") when the user picked Codex.
+    applyProviderLabels(apiSettings.provider);
     // On Safari, kick off a timeline-based fake progress to avoid the UI
     // looking stuck (Safari can't deliver mid-flight progress events).
     // Pass an estimated token count so the "~N tokens" readout isn't 0.
@@ -591,7 +617,7 @@ async function handleGenerateSummary() {
       transcriptResult.transcript,
       [...(cachedCreatorComments || []), ...(cachedViewerComments || [])]
     );
-    startSafariProgressSimulation({ inputTokens: estimatedTokens });
+    startSafariProgressSimulation({ inputTokens: estimatedTokens, provider: apiSettings.provider });
     let response;
     try {
       response = await sendNativeMessage({
