@@ -29,6 +29,16 @@ This document tracks all feature requests and implementations for the YouTube Su
 extension without paying Anthropic API costs, and can swap providers per
 content type or per task without reinstalling anything.
 
+**Safari support:** Both features work on Safari with no Swift changes and
+no `install-safari.sh` rerun. The Xcode project uses folder references to
+`extension/`, so JS changes (sidebar, settings) propagate automatically;
+`agent-server.js` spawns a fresh `node host.js` per request, so backend
+changes (`host.js`, `codex-bridge.js`) are picked up automatically too.
+`findCodexCommand()` scans `/opt/homebrew/Cellar/node/*/bin/codex` and
+`npm prefix -g` paths in addition to the static candidates, since the
+Aqua-session LaunchAgent's PATH was captured at install time and may
+not include where Homebrew's Node bundles `codex`.
+
 ### Multi-turn chat with full content context
 **Request:** "...2. support for multi-turn conversation with the transcript. the
 current flow only adds stuff to key learnings making assumptions based on the

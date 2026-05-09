@@ -202,7 +202,11 @@ function callCodex(prompt, onProgress = () => {}, options = {}) {
 }
 
 /**
- * Find codex command. Codex installs to /opt/homebrew/bin or via npm global.
+ * Find codex command. Codex ships as a Node CLI, so it may live anywhere
+ * Node's bin dir lives (Homebrew, Homebrew Cellar, npm prefix, bun, ~/.local).
+ * We check the static common locations first, then fall back to `which`,
+ * then to glob-scanning Homebrew's Node Cellar (because homebrew-installed
+ * Node bundles codex at /opt/homebrew/Cellar/node/<version>/bin/codex).
  */
 function findCodexCommand() {
   const candidates = [
@@ -212,6 +216,26 @@ function findCodexCommand() {
     path.join(os.homedir(), '.local/bin/codex'),
     path.join(os.homedir(), '.bun/bin/codex')
   ];
+
+  // Best-effort: pick up codex from Homebrew's Node Cellar. Safari runs us
+  // out of a LaunchAgent whose PATH was captured at install time and may
+  // not include the Cellar bin dir.
+  try {
+    const cellars = fs.readdirSync('/opt/homebrew/Cellar/node');
+    for (const v of cellars) {
+      candidates.push(`/opt/homebrew/Cellar/node/${v}/bin/codex`);
+    }
+  } catch {
+    // No homebrew Node, fine.
+  }
+
+  // Likewise for npm's resolved global prefix.
+  try {
+    const prefix = execSync('npm prefix -g 2>/dev/null', { encoding: 'utf8' }).trim();
+    if (prefix) candidates.push(path.join(prefix, 'bin', 'codex'));
+  } catch {
+    // No npm in PATH, skip.
+  }
 
   for (const cmd of candidates) {
     try {
