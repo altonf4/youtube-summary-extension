@@ -150,9 +150,7 @@ const sectionsListEl = document.getElementById('template-sections-list');
 const presetsListEl = document.getElementById('template-presets-list');
 const formatPreviewEl = document.getElementById('format-preview-content');
 
-// Claude API settings elements
-const anthropicApiKeyInput = document.getElementById('anthropic-api-key');
-const toggleAnthropicKeyBtn = document.getElementById('toggle-anthropic-key');
+// Claude CLI settings elements
 const claudeModelSelect = document.getElementById('claude-model');
 const authStatusDot = document.getElementById('auth-status-dot');
 const authStatusText = document.getElementById('auth-status-text');
@@ -409,7 +407,6 @@ async function loadSettings() {
   try {
     const result = await chrome.storage.sync.get([
       'remindersCheckedByDefault',
-      'anthropicApiKey',
       'claudeModel',
       'elevenlabsApiKey',
       'elevenlabsVoiceId',
@@ -425,16 +422,13 @@ async function loadSettings() {
     // Reminders default
     remindersCheckedCheckbox.checked = result.remindersCheckedByDefault !== false;
 
-    // Claude API settings
-    if (anthropicApiKeyInput) {
-      anthropicApiKeyInput.value = result.anthropicApiKey || '';
-    }
+    // Claude CLI settings
     if (claudeModelSelect) {
       claudeModelSelect.value = result.claudeModel || 'sonnet';
     }
 
-    // Check auth status after loading settings
-    checkAuthStatus(result.anthropicApiKey);
+    // Check CLI status
+    checkAuthStatus();
 
     // Audio settings
     if (apiKeyInput) {
@@ -470,7 +464,6 @@ async function saveSettings() {
       templates: currentTemplates,
       analysisInstructions: youtubeInstructions,
       remindersCheckedByDefault: remindersCheckedCheckbox.checked,
-      anthropicApiKey: anthropicApiKeyInput ? anthropicApiKeyInput.value : '',
       claudeModel: claudeModelSelect ? claudeModelSelect.value : 'sonnet',
       elevenlabsApiKey: apiKeyInput ? apiKeyInput.value : '',
       elevenlabsVoiceId: voiceSelect ? voiceSelect.value : '',
@@ -650,34 +643,17 @@ function setupAudioSettings() {
 }
 
 // ============================================================
-// Anthropic API Settings
+// Claude CLI Settings
 // ============================================================
 
 function setupAnthropicSettings() {
-  if (!anthropicApiKeyInput) return;
-
-  if (toggleAnthropicKeyBtn) {
-    toggleAnthropicKeyBtn.addEventListener('click', () => {
-      const isPassword = anthropicApiKeyInput.type === 'password';
-      anthropicApiKeyInput.type = isPassword ? 'text' : 'password';
-      toggleAnthropicKeyBtn.title = isPassword ? 'Hide API key' : 'Show API key';
-    });
-  }
-
-  let authCheckTimeout = null;
-  anthropicApiKeyInput.addEventListener('input', () => {
-    if (authCheckTimeout) clearTimeout(authCheckTimeout);
-    authCheckTimeout = setTimeout(() => {
-      checkAuthStatus(anthropicApiKeyInput.value.trim());
-    }, 500);
-  });
+  // No API key input to set up; just check CLI status on load
 }
 
 /**
- * Check auth status by sending checkAuth to native host
- * @param {string} [apiKey] - Optional API key to check
+ * Check CLI auth status by sending checkAuth to native host
  */
-async function checkAuthStatus(apiKey) {
+async function checkAuthStatus() {
   if (!authStatusDot || !authStatusText) return;
 
   authStatusDot.className = 'auth-status-dot checking';
@@ -686,8 +662,7 @@ async function checkAuthStatus(apiKey) {
   try {
     const response = await new Promise((resolve, reject) => {
       chrome.runtime.sendMessage({
-        action: 'checkAuth',
-        anthropicApiKey: apiKey || ''
+        action: 'checkAuth'
       }, (response) => {
         if (chrome.runtime.lastError) {
           reject(new Error(chrome.runtime.lastError.message));
@@ -699,17 +674,15 @@ async function checkAuthStatus(apiKey) {
 
     if (response && response.success) {
       const methodLabels = {
-        oauth: 'OAuth (Claude Code)',
-        api_key: 'API Key',
-        cli: 'CLI Fallback',
-        none: 'Not configured'
+        cli: 'Claude CLI detected',
+        none: 'Claude CLI not found'
       };
 
       authStatusDot.className = `auth-status-dot ${response.available ? 'connected' : 'disconnected'}`;
       authStatusText.textContent = methodLabels[response.authMethod] || response.authMethod;
     } else {
       authStatusDot.className = 'auth-status-dot disconnected';
-      authStatusText.textContent = 'Not configured';
+      authStatusText.textContent = 'Claude CLI not found';
     }
   } catch (error) {
     authStatusDot.className = 'auth-status-dot disconnected';

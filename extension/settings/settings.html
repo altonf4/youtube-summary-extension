@@ -75,33 +75,19 @@
         </div>
       </section>
 
-      <!-- Claude API Settings -->
+      <!-- Claude CLI Settings -->
       <section class="setting-section">
-        <h2>Claude API</h2>
+        <h2>Claude CLI</h2>
         <p class="section-description">
-          Configure how the extension connects to Claude. By default, it uses OAuth credentials from Claude Code. You can also provide an API key as a fallback.
+          This extension uses the Claude Code CLI for inference. Make sure <code>claude</code> is installed and available in your PATH.
         </p>
 
         <div class="form-group">
-          <label>Auth Status</label>
+          <label>CLI Status</label>
           <div class="auth-status" id="auth-status">
             <span class="auth-status-dot" id="auth-status-dot"></span>
             <span id="auth-status-text">Checking...</span>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="anthropic-api-key">Anthropic API Key</label>
-          <div class="password-input-container">
-            <input type="password" id="anthropic-api-key" placeholder="sk-ant-...">
-            <button type="button" id="toggle-anthropic-key" class="toggle-visibility-btn" title="Show/hide API key">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
-          </div>
-          <p class="setting-hint">Only needed if OAuth from Claude Code is not available. Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a></p>
         </div>
 
         <div class="form-group">

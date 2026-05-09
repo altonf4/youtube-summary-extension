@@ -12,7 +12,7 @@ const appleNotes = require('./apple-notes');
 const appleReminders = require('./apple-reminders');
 const logger = require('./logger');
 const elevenlabs = require('./elevenlabs');
-const anthropicClient = require('./anthropic-client');
+const { execSync } = require('child_process');
 
 // Native messaging protocol uses length-prefixed messages
 // Message format: [4 bytes: message length][message in JSON]
@@ -118,7 +118,7 @@ async function handleMessage(message) {
 
 // Handle generate summary action
 async function handleGenerateSummary(message) {
-  const { contentType, videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, templateSections, requestId, anthropicApiKey, model, author, siteName, publishDate } = message;
+  const { contentType, videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, templateSections, requestId, model, author, siteName, publishDate } = message;
 
   if (!videoId && contentType === 'youtube_video') {
     return { success: false, error: 'Video ID is required' };
@@ -148,7 +148,7 @@ async function handleGenerateSummary(message) {
     // Generate summary with Claude
     logDebug('Generating summary with Claude Code...');
     logDebug(`Description length: ${description?.length || 0} chars, Links: ${descriptionLinks?.length || 0}`);
-    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress, { apiKey: anthropicApiKey, model, contentType: contentType || 'youtube_video', author, siteName, publishDate, templateSections });
+    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress, { model, contentType: contentType || 'youtube_video', author, siteName, publishDate, templateSections });
 
     if (!summaryResult.success) {
       return summaryResult;
@@ -265,7 +265,7 @@ async function handleListFolders() {
 
 // Handle follow-up query action
 async function handleFollowUp(message) {
-  const { videoId, title, transcript, query, existingLearnings, anthropicApiKey, model } = message;
+  const { videoId, title, transcript, query, existingLearnings, model } = message;
 
   if (!transcript) {
     return { success: false, error: 'Transcript is required' };
@@ -280,7 +280,7 @@ async function handleFollowUp(message) {
     logDebug(`Existing learnings: ${existingLearnings.length}`);
 
     // Generate follow-up with Claude
-    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings, { apiKey: anthropicApiKey, model });
+    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings, { model });
 
     if (!result.success) {
       return result;
@@ -368,26 +368,21 @@ async function handleListVoices(message) {
   }
 }
 
-// Handle check auth action
+// Handle check auth action - checks if Claude CLI is available
 async function handleCheckAuth(message) {
-  const { anthropicApiKey } = message;
-
   try {
-    logDebug('Checking auth status...');
-    const status = anthropicClient.checkAuthStatus(anthropicApiKey);
-    logDebug(`Auth status: ${status.method} (available: ${status.available})`);
-
-    return {
-      success: true,
-      authMethod: status.method,
-      available: status.available
-    };
+    logDebug('Checking CLI auth status...');
+    try {
+      execSync('which claude 2>/dev/null || test -f ~/.claude/local/claude', { timeout: 3000 });
+      logDebug('Auth status: cli (available: true)');
+      return { success: true, authMethod: 'cli', available: true };
+    } catch {
+      logDebug('Auth status: none (available: false)');
+      return { success: true, authMethod: 'none', available: false };
+    }
   } catch (error) {
     logDebug(`Error checking auth: ${error.message}`);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 

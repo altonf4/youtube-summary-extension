@@ -7,7 +7,6 @@ const { spawn } = require('child_process');
 const os = require('os');
 const path = require('path');
 const logger = require('./logger');
-const anthropicClient = require('./anthropic-client');
 
 /**
  * Generate summary using Claude Code CLI
@@ -23,7 +22,7 @@ const anthropicClient = require('./anthropic-client');
  */
 async function generateSummary(videoTitle, transcript, description = '', descriptionLinks = [], creatorComments = [], viewerComments = [], customInstructions = null, onProgress = () => {}, options = {}) {
   const log = (msg) => logger.log(msg, 'claude-bridge');
-  const { apiKey, model, contentType, author, siteName, publishDate, templateSections } = options;
+  const { model, contentType, author, siteName, publishDate, templateSections } = options;
 
   try {
     onProgress({ stage: 'preparing', message: 'Preparing content...' });
@@ -41,26 +40,11 @@ async function generateSummary(videoTitle, transcript, description = '', descrip
     log(`Prompt length: ${prompt.length} characters (contentType: ${contentType || 'youtube_video'})`);
     log(`Including ${creatorComments?.length || 0} creator comments, ${viewerComments?.length || 0} viewer comments in prompt`);
 
-    // Try direct API first, fall back to CLI
-    let response;
-    try {
-      log('Attempting direct Anthropic API call...');
-      response = await anthropicClient.callAnthropicAPI(prompt, {
-        apiKey,
-        model: model || 'sonnet',
-        onProgress
-      });
-      log(`API response received: ${response.length} characters`);
-    } catch (apiErr) {
-      log(`API call failed: ${apiErr.message}, falling back to CLI...`);
-      onProgress({ stage: 'starting', message: 'Falling back to Claude CLI...' });
-
-      // Fall back to CLI
-      const claudeCmd = findClaudeCodeCommand();
-      log(`Using Claude command: ${claudeCmd}`);
-      response = await callClaudeCode(prompt, onProgress, { model });
-      log(`CLI response received: ${response.length} characters`);
-    }
+    // Use Claude Code CLI for inference
+    const claudeCmd = findClaudeCodeCommand();
+    log(`Using Claude command: ${claudeCmd}`);
+    const response = await callClaudeCode(prompt, onProgress, { model });
+    log(`CLI response received: ${response.length} characters`);
 
     // Parse the response
     onProgress({ stage: 'parsing', message: 'Extracting insights...' });
@@ -743,29 +727,18 @@ function parseResponse(response, descriptionLinks = [], templateSections = null)
  */
 async function generateFollowUp(videoTitle, transcript, query, existingLearnings = [], options = {}) {
   const log = (msg) => logger.log(msg, 'claude-bridge:followup');
-  const { apiKey, model } = options;
+  const { model } = options;
 
   try {
     // Create follow-up prompt
     const prompt = createFollowUpPrompt(videoTitle, transcript, query, existingLearnings);
     log(`Follow-up prompt length: ${prompt.length} characters`);
 
-    // Try direct API first, fall back to CLI
-    let response;
-    try {
-      log('Attempting direct Anthropic API call for follow-up...');
-      response = await anthropicClient.callAnthropicAPI(prompt, {
-        apiKey,
-        model: model || 'sonnet'
-      });
-      log(`API response received: ${response.length} characters`);
-    } catch (apiErr) {
-      log(`API call failed: ${apiErr.message}, falling back to CLI...`);
-      const claudeCmd = findClaudeCodeCommand();
-      log(`Using Claude command: ${claudeCmd}`);
-      response = await callClaudeCode(prompt, () => {}, { model });
-      log(`CLI response received: ${response.length} characters`);
-    }
+    // Use Claude Code CLI for inference
+    const claudeCmd = findClaudeCodeCommand();
+    log(`Using Claude command: ${claudeCmd}`);
+    const response = await callClaudeCode(prompt, () => {}, { model });
+    log(`CLI response received: ${response.length} characters`);
 
     // Parse the follow-up response (returns { insights: string[], actions: string[] })
     const parsed = parseFollowUpResponse(response);

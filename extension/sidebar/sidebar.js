@@ -34,6 +34,9 @@ const summarySection = document.getElementById('summary-section');
 const successSection = document.getElementById('success-section');
 const errorSection = document.getElementById('error-section');
 
+// Track whether we're waiting for CONTENT_INFO before fetching transcript preview
+let pendingTranscriptPreview = true;
+
 // Initialize
 function init() {
   // Request content info from content script (supports both old and new message types)
@@ -93,8 +96,9 @@ function init() {
   // Load folder suggestions from storage
   loadFolderSuggestions();
 
-  // Fetch transcript immediately for preview
-  fetchTranscriptForPreview();
+  // Don't fetch transcript preview yet — wait for CONTENT_INFO so we know
+  // whether autoGenerate is set. If it is, the generation flow will fetch
+  // the transcript itself and we'd otherwise race on pendingTranscriptResolver.
 
   // Set up search functionality
   initTranscriptSearch();
@@ -195,14 +199,13 @@ async function loadTemplateConfig() {
 // Load API settings from storage
 async function loadApiSettings() {
   try {
-    const result = await chrome.storage.sync.get(['anthropicApiKey', 'claudeModel']);
+    const result = await chrome.storage.sync.get(['claudeModel']);
     return {
-      anthropicApiKey: result.anthropicApiKey || '',
       claudeModel: result.claudeModel || 'sonnet'
     };
   } catch (error) {
     console.error('Error loading API settings:', error);
-    return { anthropicApiKey: '', claudeModel: 'sonnet' };
+    return { claudeModel: 'sonnet' };
   }
 }
 
@@ -212,6 +215,24 @@ let pendingTranscriptResolver = null;
 // Listen for messages from content script
 window.addEventListener('message', (event) => {
   if (event.data.type === 'CONTENT_INFO') {
+    // If we're already generating (loading section visible) and this is a
+    // duplicate CONTENT_INFO for the same content (no autoGenerate flag),
+    // just update metadata without resetting the UI. This happens because
+    // init() sends REQUEST_CONTENT_INFO which triggers a second
+    // sendContentInfoToSidebar() after the iframe.onload one already fired.
+    const isGenerating = loadingSection.style.display !== 'none';
+    const isSameContent = currentVideoInfo &&
+      (event.data.videoId === currentVideoInfo.videoId ||
+       event.data.url === currentVideoInfo.url);
+
+    if (isGenerating && isSameContent && !event.data.autoGenerate) {
+      // Just update metadata fields, don't reset UI
+      currentContentType = event.data.contentType || currentContentType;
+      currentVideoInfo = event.data;
+      videoTitle.textContent = event.data.title;
+      return;
+    }
+
     currentContentType = event.data.contentType || 'youtube_video';
     currentVideoInfo = event.data;
     videoTitle.textContent = event.data.title;
@@ -230,7 +251,15 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data.autoGenerate) {
+      // Skip transcript preview — handleGenerateSummary will fetch the
+      // transcript itself via requestTranscript(). Running both would race
+      // on the shared pendingTranscriptResolver.
       handleGenerateSummary();
+    } else if (pendingTranscriptPreview) {
+      // Only fetch transcript preview when not auto-generating, to avoid
+      // two concurrent requestTranscript() calls fighting over the resolver.
+      pendingTranscriptPreview = false;
+      fetchTranscriptForPreview();
     }
   }
 
@@ -500,7 +529,6 @@ async function handleGenerateSummary() {
       viewerComments: cachedViewerComments,
       customInstructions: customInstructions,
       templateSections: templateConfig?.sections || null,
-      anthropicApiKey: apiSettings.anthropicApiKey,
       model: apiSettings.claudeModel,
       // Article-specific fields
       author: currentVideoInfo.author || null,
@@ -1306,7 +1334,6 @@ async function handleFollowUp() {
       transcript: cachedTranscript,
       query: query,
       existingLearnings: existingLearnings,
-      anthropicApiKey: apiSettings.anthropicApiKey,
       model: apiSettings.claudeModel
     });
 
