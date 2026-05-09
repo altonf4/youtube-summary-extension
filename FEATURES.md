@@ -4,6 +4,61 @@ This document tracks all feature requests and implementations for the YouTube Su
 
 ## Implemented Features
 
+### Codex CLI (OAuth) as alternative AI provider
+**Request:** "i'd like you to implement these two features: 1. support for codex using oauth token..."
+
+**Implementation:**
+- Added `native-host/codex-bridge.js` mirroring `claude-bridge.js`'s public API
+  (`generateSummary`, `generateFollowUp`, `chat`). Spawns `codex exec
+  --skip-git-repo-check --color never --ephemeral --output-last-message <tmpfile>`,
+  pipes the prompt via stdin, reads the clean reply from the temp file.
+  Reuses the `claude-bridge` prompt builders and parsers so output formatting
+  stays identical across providers.
+- Codex authentication uses OAuth credentials cached in `~/.codex/auth.json`
+  by `codex login` — no API keys are stored in the extension.
+- `host.js` now routes each AI call through `getBridge(provider)` based on
+  the `provider` field in the message; defaults to `claude` for backwards
+  compatibility with older extension builds.
+- `checkAuth` reports availability for both providers (Claude CLI presence,
+  Codex CLI presence, Codex `auth.json` presence).
+- Settings page adds an "AI Provider" section with a Claude/Codex selector,
+  status dots for both CLIs, and provider-specific model controls (Claude
+  preset dropdown, Codex free-text model input).
+
+**Use Case:** Users with active OpenAI Codex subscriptions can drive the
+extension without paying Anthropic API costs, and can swap providers per
+content type or per task without reinstalling anything.
+
+### Multi-turn chat with full content context
+**Request:** "...2. support for multi-turn conversation with the transcript. the
+current flow only adds stuff to key learnings making assumptions based on the
+follow up question asked. i'd like to be able to follow up with the transcript,
+generated summary and comments in the context, and enabling multi turn conversation"
+
+**Implementation:**
+- Added a `chat` action in `host.js` that takes the full conversation context
+  (transcript + generated summary + current Key Learnings + Action Items +
+  creator/viewer comments) plus the chat history, and returns a free-form
+  reply. Both CLI providers are one-shot, so `buildChatPrompt` serializes
+  history into a single prompt each call.
+- Replaced the single-shot "Extract More" form in the sidebar with a chat
+  panel that supports two modes:
+  - **Chat (multi-turn)** — conversational replies rendered as bubbles with
+    minimal markdown (lists, bold, code, inline links). Each assistant reply
+    has "Add as learning" and "Copy" actions.
+  - **Extract to Learnings** — preserves the legacy behavior that drops
+    insights/actions straight into Key Learnings + Action Items.
+- Chat history is persisted per-content in `chrome.storage.local` under
+  `chatHistory.<videoId|url>`, so reopening the sidebar on the same video
+  restores the conversation. History resets when navigating to new content.
+- Sidebar sends the active provider + model with every chat / followUp /
+  generateSummary call.
+
+**Use Case:** Lets users interrogate the source material (e.g. "what does the
+speaker actually say about pricing?", "summarize the section on testing",
+"quote the part where they discuss tradeoffs") without those answers being
+forced into the Key Learnings list.
+
 ### Safari (macOS) Support
 **Request:** "can you build a version of this extension that works on safari?"
 

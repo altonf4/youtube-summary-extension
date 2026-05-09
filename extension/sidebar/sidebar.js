@@ -56,7 +56,7 @@ function init() {
   // Close button
   document.getElementById('close-btn').addEventListener('click', closeSidebar);
 
-  // Follow-up button
+  // Follow-up / chat button
   document.getElementById('follow-up-btn').addEventListener('click', handleFollowUp);
 
   // Example chips - auto-fill textarea when clicked
@@ -70,6 +70,9 @@ function init() {
       }
     });
   });
+
+  // Chat-specific UI (mode toggle, clear button, keyboard shortcuts)
+  setupChatUI();
 
   // Summary toggle button
   document.getElementById('toggle-summary-btn').addEventListener('click', toggleSummary);
@@ -199,13 +202,18 @@ async function loadTemplateConfig() {
 // Load API settings from storage
 async function loadApiSettings() {
   try {
-    const result = await chrome.storage.sync.get(['claudeModel']);
+    const result = await chrome.storage.sync.get(['claudeModel', 'aiProvider', 'codexModel']);
+    const provider = result.aiProvider === 'codex' ? 'codex' : 'claude';
     return {
-      claudeModel: result.claudeModel || 'sonnet'
+      provider,
+      claudeModel: result.claudeModel || 'sonnet',
+      codexModel: (result.codexModel || '').trim() || null,
+      // Convenience: which model string to send for the active provider.
+      model: provider === 'codex' ? ((result.codexModel || '').trim() || null) : (result.claudeModel || 'sonnet')
     };
   } catch (error) {
     console.error('Error loading API settings:', error);
-    return { claudeModel: 'sonnet' };
+    return { provider: 'claude', claudeModel: 'sonnet', codexModel: null, model: 'sonnet' };
   }
 }
 
@@ -243,6 +251,9 @@ window.addEventListener('message', (event) => {
     currentNoteId = null;
     cachedTranscript = null;
     cachedAudioData = null;
+    chatHistory = [];
+    currentChatKey = null;
+    renderChatHistory();
     resetProgressUI();
     showSection(generateSection);
 
@@ -595,7 +606,8 @@ async function handleGenerateSummary() {
         viewerComments: cachedViewerComments,
         customInstructions: customInstructions,
         templateSections: templateConfig?.sections || null,
-        model: apiSettings.claudeModel,
+        provider: apiSettings.provider,
+        model: apiSettings.model,
         // Article-specific fields
         author: currentVideoInfo.author || null,
         siteName: currentVideoInfo.siteName || null,
@@ -641,6 +653,10 @@ function displaySummary(summary, keyLearnings, relevantLinks = []) {
   // Display summary text
   const summaryText = document.getElementById('summary-text');
   summaryText.textContent = summary;
+
+  // Load any prior chat history for this content. The chat is per-video so
+  // re-opening the sidebar on the same content restores the conversation.
+  loadChatHistory();
 
   // Display relevant links if any
   const linksContainer = document.getElementById('relevant-links-list');
@@ -1362,9 +1378,258 @@ async function saveFolderSuggestion(folderName) {
   }
 }
 
+// =====================================
+// CHAT: Multi-turn conversation
+// =====================================
+
+// In-memory chat history for the current content. Persisted per-content key
+// in chrome.storage.local under `chatHistory.<contentKey>` so the conversation
+// survives sidebar reloads and tab switches.
+let chatHistory = [];
+let currentChatKey = null;
+
 /**
- * Handle follow-up prompt to extract more information
- * Sends additional query to Claude and appends new learnings
+ * Build a stable per-content key for chat persistence.
+ * Prefer videoId (YouTube), fall back to URL.
+ */
+function getChatKey() {
+  if (!currentVideoInfo) return null;
+  if (currentVideoInfo.videoId) return `yt:${currentVideoInfo.videoId}`;
+  if (currentVideoInfo.url) return `url:${currentVideoInfo.url}`;
+  return null;
+}
+
+/**
+ * Load chat history for the current content into memory + DOM.
+ */
+async function loadChatHistory() {
+  const key = getChatKey();
+  currentChatKey = key;
+  chatHistory = [];
+  if (!key) {
+    renderChatHistory();
+    return;
+  }
+  try {
+    const all = await chrome.storage.local.get(['chatHistory']);
+    const saved = all.chatHistory && all.chatHistory[key];
+    if (Array.isArray(saved)) chatHistory = saved;
+  } catch (error) {
+    console.error('Error loading chat history:', error);
+  }
+  renderChatHistory();
+}
+
+/**
+ * Persist chat history to chrome.storage.local. Storage is bucketed by
+ * content key so different videos keep separate conversations.
+ */
+async function saveChatHistory() {
+  if (!currentChatKey) return;
+  try {
+    const all = await chrome.storage.local.get(['chatHistory']);
+    const map = all.chatHistory || {};
+    map[currentChatKey] = chatHistory;
+    await chrome.storage.local.set({ chatHistory: map });
+  } catch (error) {
+    console.error('Error saving chat history:', error);
+  }
+}
+
+/**
+ * Clear chat history for the current content.
+ */
+async function clearChatHistory() {
+  chatHistory = [];
+  renderChatHistory();
+  if (!currentChatKey) return;
+  try {
+    const all = await chrome.storage.local.get(['chatHistory']);
+    const map = all.chatHistory || {};
+    delete map[currentChatKey];
+    await chrome.storage.local.set({ chatHistory: map });
+  } catch (error) {
+    console.error('Error clearing chat history:', error);
+  }
+}
+
+/**
+ * Minimal markdown renderer for chat bubbles. Handles **bold**, *italic*,
+ * `code`, ``` fenced blocks, bullet lists, and paragraphs. Escapes HTML first.
+ */
+function renderMarkdown(text) {
+  const escape = (s) => s.replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+
+  // Pull out fenced code blocks first so their contents survive escaping below.
+  const codeBlocks = [];
+  let working = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, body) => {
+    const idx = codeBlocks.push(`<pre class="chat-code"><code>${escape(body)}</code></pre>`) - 1;
+    return ` CODEBLOCK${idx} `;
+  });
+
+  working = escape(working);
+
+  // Inline code
+  working = working.replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
+  // Bold + italic
+  working = working.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  working = working.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  // Links
+  working = working.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Bullet lists: collapse runs of `- ` lines into <ul>
+  const lines = working.split('\n');
+  const out = [];
+  let inList = false;
+  let para = [];
+  const flushPara = () => {
+    if (para.length) {
+      out.push(`<p>${para.join(' ')}</p>`);
+      para = [];
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*]\s+(.*)/);
+    if (bullet) {
+      flushPara();
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push(`<li>${bullet[1]}</li>`);
+    } else if (line === '') {
+      if (inList) { out.push('</ul>'); inList = false; }
+      flushPara();
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      para.push(line);
+    }
+  }
+  if (inList) out.push('</ul>');
+  flushPara();
+
+  let html = out.join('');
+  html = html.replace(/ CODEBLOCK(\d+) /g, (_, idx) => codeBlocks[parseInt(idx, 10)]);
+  return html;
+}
+
+/**
+ * Render the chat history into the .chat-messages container.
+ */
+function renderChatHistory() {
+  const container = document.getElementById('chat-messages');
+  if (!container) return;
+  container.innerHTML = '';
+
+  for (let i = 0; i < chatHistory.length; i++) {
+    const msg = chatHistory[i];
+    const wrapper = document.createElement('div');
+    wrapper.className = `chat-message chat-${msg.role}`;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    if (msg.role === 'assistant') {
+      bubble.innerHTML = renderMarkdown(msg.content);
+    } else {
+      bubble.textContent = msg.content;
+    }
+    wrapper.appendChild(bubble);
+
+    if (msg.role === 'assistant') {
+      const actions = document.createElement('div');
+      actions.className = 'chat-actions';
+
+      const extractBtn = document.createElement('button');
+      extractBtn.className = 'chat-action-btn';
+      extractBtn.textContent = 'Add as learning';
+      extractBtn.title = 'Save this reply as a Key Learning';
+      extractBtn.addEventListener('click', () => {
+        appendNewLearnings([msg.content]);
+        extractBtn.textContent = 'Added';
+        extractBtn.disabled = true;
+      });
+      actions.appendChild(extractBtn);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'chat-action-btn';
+      copyBtn.textContent = 'Copy';
+      copyBtn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(msg.content);
+          copyBtn.textContent = 'Copied';
+          setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+        } catch (e) {
+          copyBtn.textContent = 'Failed';
+        }
+      });
+      actions.appendChild(copyBtn);
+
+      wrapper.appendChild(actions);
+    }
+
+    container.appendChild(wrapper);
+  }
+
+  // Auto-scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+/**
+ * Get the current chat mode (chat or extract).
+ */
+function getChatMode() {
+  const checked = document.querySelector('input[name="chat-mode"]:checked');
+  return checked ? checked.value : 'chat';
+}
+
+/**
+ * Wire up chat-specific UI: mode toggle updates button label/placeholder.
+ */
+function setupChatUI() {
+  document.querySelectorAll('input[name="chat-mode"]').forEach((radio) => {
+    radio.addEventListener('change', updateChatModeUI);
+  });
+  updateChatModeUI();
+
+  const clearBtn = document.getElementById('chat-clear-btn');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    clearChatHistory();
+  });
+
+  // Submit on Cmd/Ctrl+Enter for convenience.
+  const input = document.getElementById('follow-up-input');
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleFollowUp();
+      }
+    });
+  }
+}
+
+function updateChatModeUI() {
+  const mode = getChatMode();
+  const btnLabel = document.getElementById('follow-up-btn-label');
+  const input = document.getElementById('follow-up-input');
+  const loadingText = document.getElementById('follow-up-loading-text');
+  if (btnLabel) btnLabel.textContent = mode === 'extract' ? 'Extract' : 'Send';
+  if (input) {
+    input.placeholder = mode === 'extract'
+      ? 'What should I extract? (e.g. "all statistics mentioned")'
+      : 'Ask a follow-up question...';
+  }
+  if (loadingText) {
+    loadingText.textContent = mode === 'extract'
+      ? 'Extracting more insights...'
+      : 'Thinking...';
+  }
+}
+
+/**
+ * Handle the chat/follow-up button. Dispatches based on chat mode:
+ *  - "chat":    multi-turn conversation, full context, free-form reply.
+ *  - "extract": legacy single-shot extraction into Key Learnings + Actions.
  */
 async function handleFollowUp() {
   const followUpInput = document.getElementById('follow-up-input');
@@ -1379,64 +1644,27 @@ async function handleFollowUp() {
   }
 
   if (!cachedTranscript || !currentVideoInfo) {
-    showError('Transcript or video info not available');
+    showError('Transcript or content info not available');
     return;
   }
 
-  // Show loading state
+  const mode = getChatMode();
+
   followUpBtn.disabled = true;
   inputContainer.style.display = 'none';
   followUpLoading.style.display = 'flex';
 
   try {
-    // Get current learnings to provide context
-    const existingLearnings = getEditedLearnings();
-
-    // Load API settings for follow-up
     const apiSettings = await loadApiSettings();
 
-    // Send follow-up request to native host
-    const response = await sendNativeMessage({
-      action: 'followUp',
-      videoId: currentVideoInfo.videoId,
-      title: currentVideoInfo.title,
-      transcript: cachedTranscript,
-      query: query,
-      existingLearnings: existingLearnings,
-      model: apiSettings.claudeModel
-    });
-
-    if (response.success) {
-      // Route insights to Key Learnings section
-      if (response.insights && response.insights.length > 0) {
-        appendNewLearnings(response.insights);
-      }
-
-      // Route actions to Action Items section
-      if (response.actions && response.actions.length > 0) {
-        appendNewActionItems(response.actions);
-      }
-
-      // Handle legacy response format (additionalLearnings)
-      if (response.additionalLearnings && response.additionalLearnings.length > 0) {
-        appendNewLearnings(response.additionalLearnings);
-      }
-
-      // Clear the input
-      followUpInput.value = '';
-
-      // Show error if no items were returned
-      if ((!response.insights || response.insights.length === 0) &&
-          (!response.actions || response.actions.length === 0) &&
-          (!response.additionalLearnings || response.additionalLearnings.length === 0)) {
-        throw new Error('No additional insights or actions found for your query');
-      }
+    if (mode === 'chat') {
+      await runChatTurn(query, apiSettings);
     } else {
-      throw new Error(response.error || 'Failed to extract additional information');
+      await runExtractTurn(query, apiSettings);
     }
+    followUpInput.value = '';
   } catch (error) {
     console.error('Error in follow-up:', error);
-    // Show error inline instead of switching sections
     const errorMsg = document.createElement('p');
     errorMsg.className = 'follow-up-error';
     errorMsg.textContent = error.message;
@@ -1446,10 +1674,92 @@ async function handleFollowUp() {
     inputContainer.parentNode.insertBefore(errorMsg, followUpLoading);
     setTimeout(() => errorMsg.remove(), 5000);
   } finally {
-    // Hide loading, show input
     followUpLoading.style.display = 'none';
     inputContainer.style.display = 'flex';
     followUpBtn.disabled = false;
+  }
+}
+
+/**
+ * Run a single chat turn: append user message, call native host with full
+ * conversation context, append assistant reply, persist.
+ */
+async function runChatTurn(query, apiSettings) {
+  // Make sure we have the right content key loaded (handles first-ever turn).
+  if (currentChatKey !== getChatKey()) {
+    await loadChatHistory();
+  }
+
+  // Optimistically add the user message and re-render.
+  chatHistory.push({ role: 'user', content: query });
+  renderChatHistory();
+  await saveChatHistory();
+
+  const response = await sendNativeMessage({
+    action: 'chat',
+    title: currentVideoInfo.title,
+    url: currentVideoInfo.url || null,
+    contentType: currentContentType,
+    transcript: cachedTranscript,
+    summary: currentSummary?.summary || (document.getElementById('summary-text')?.innerText.trim() || ''),
+    keyLearnings: getEditedLearnings(),
+    actionItems: getSelectedActionItems().map((a) => a.text),
+    creatorComments: cachedCreatorComments || [],
+    viewerComments: cachedViewerComments || [],
+    messages: chatHistory,
+    provider: apiSettings.provider,
+    model: apiSettings.model
+  });
+
+  if (!response || !response.success) {
+    // Roll back the optimistic user message so the user can retry without
+    // duplicating it on next attempt.
+    chatHistory.pop();
+    renderChatHistory();
+    await saveChatHistory();
+    throw new Error(response?.error || 'Chat request failed');
+  }
+
+  chatHistory.push({ role: 'assistant', content: response.reply || '(empty reply)' });
+  renderChatHistory();
+  await saveChatHistory();
+}
+
+/**
+ * Legacy extraction mode: one-shot follow-up that dumps results into
+ * Key Learnings / Action Items. Preserved for users who want the old behavior.
+ */
+async function runExtractTurn(query, apiSettings) {
+  const existingLearnings = getEditedLearnings();
+
+  const response = await sendNativeMessage({
+    action: 'followUp',
+    videoId: currentVideoInfo.videoId,
+    title: currentVideoInfo.title,
+    transcript: cachedTranscript,
+    query: query,
+    existingLearnings: existingLearnings,
+    provider: apiSettings.provider,
+    model: apiSettings.model
+  });
+
+  if (!response.success) {
+    throw new Error(response.error || 'Failed to extract additional information');
+  }
+
+  if (response.insights && response.insights.length > 0) {
+    appendNewLearnings(response.insights);
+  }
+  if (response.actions && response.actions.length > 0) {
+    appendNewActionItems(response.actions);
+  }
+  if (response.additionalLearnings && response.additionalLearnings.length > 0) {
+    appendNewLearnings(response.additionalLearnings);
+  }
+  if ((!response.insights || response.insights.length === 0) &&
+      (!response.actions || response.actions.length === 0) &&
+      (!response.additionalLearnings || response.additionalLearnings.length === 0)) {
+    throw new Error('No additional insights or actions found for your query');
   }
 }
 

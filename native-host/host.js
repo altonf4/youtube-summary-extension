@@ -8,11 +8,21 @@
 const fs = require('fs');
 const path = require('path');
 const claudeBridge = require('./claude-bridge');
+const codexBridge = require('./codex-bridge');
 const appleNotes = require('./apple-notes');
 const appleReminders = require('./apple-reminders');
 const logger = require('./logger');
 const elevenlabs = require('./elevenlabs');
 const { execSync } = require('child_process');
+
+/**
+ * Resolve which provider bridge to use based on the message.
+ * Defaults to Claude for backwards compatibility with old extension builds.
+ */
+function getBridge(provider) {
+  if (provider === 'codex') return codexBridge;
+  return claudeBridge;
+}
 
 // Native messaging protocol uses length-prefixed messages
 // Message format: [4 bytes: message length][message in JSON]
@@ -84,6 +94,10 @@ async function handleMessage(message) {
         response = await handleFollowUp(message);
         break;
 
+      case 'chat':
+        response = await handleChat(message);
+        break;
+
       case 'generateAudio':
         response = await handleGenerateAudio(message);
         break;
@@ -118,7 +132,8 @@ async function handleMessage(message) {
 
 // Handle generate summary action
 async function handleGenerateSummary(message) {
-  const { contentType, videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, templateSections, requestId, model, author, siteName, publishDate } = message;
+  const { contentType, videoId, title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, templateSections, requestId, model, author, siteName, publishDate, provider } = message;
+  const bridge = getBridge(provider);
 
   if (!videoId && contentType === 'youtube_video') {
     return { success: false, error: 'Video ID is required' };
@@ -145,10 +160,10 @@ async function handleGenerateSummary(message) {
       });
     };
 
-    // Generate summary with Claude
-    logDebug('Generating summary with Claude Code...');
+    // Generate summary with selected provider
+    logDebug(`Generating summary with provider=${provider || 'claude'}, model=${model || 'default'}`);
     logDebug(`Description length: ${description?.length || 0} chars, Links: ${descriptionLinks?.length || 0}`);
-    const summaryResult = await claudeBridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress, { model, contentType: contentType || 'youtube_video', author, siteName, publishDate, templateSections });
+    const summaryResult = await bridge.generateSummary(title, transcript, description, descriptionLinks, creatorComments, viewerComments, customInstructions, onProgress, { model, contentType: contentType || 'youtube_video', author, siteName, publishDate, templateSections });
 
     if (!summaryResult.success) {
       return summaryResult;
@@ -265,7 +280,8 @@ async function handleListFolders() {
 
 // Handle follow-up query action
 async function handleFollowUp(message) {
-  const { videoId, title, transcript, query, existingLearnings, model } = message;
+  const { videoId, title, transcript, query, existingLearnings, model, provider } = message;
+  const bridge = getBridge(provider);
 
   if (!transcript) {
     return { success: false, error: 'Transcript is required' };
@@ -276,11 +292,10 @@ async function handleFollowUp(message) {
   }
 
   try {
-    logDebug(`Processing follow-up query: ${query.substring(0, 50)}...`);
+    logDebug(`Processing follow-up query (provider=${provider || 'claude'}): ${query.substring(0, 50)}...`);
     logDebug(`Existing learnings: ${existingLearnings.length}`);
 
-    // Generate follow-up with Claude
-    const result = await claudeBridge.generateFollowUp(title, transcript, query, existingLearnings, { model });
+    const result = await bridge.generateFollowUp(title, transcript, query, existingLearnings, { model });
 
     if (!result.success) {
       return result;
@@ -302,6 +317,141 @@ async function handleFollowUp(message) {
       error: error.message
     };
   }
+}
+
+/**
+ * Handle multi-turn chat. The extension passes the full conversation context
+ * (source material + summary + learnings + comments + every prior message)
+ * each call — the CLI is one-shot, so we serialize history into one prompt
+ * here and return Claude/Codex's reply verbatim.
+ */
+async function handleChat(message) {
+  const {
+    title,
+    url,
+    contentType,
+    transcript,
+    summary,
+    keyLearnings,
+    actionItems,
+    creatorComments,
+    viewerComments,
+    messages,
+    model,
+    provider
+  } = message;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return { success: false, error: 'At least one chat message is required' };
+  }
+
+  const bridge = getBridge(provider);
+  const prompt = buildChatPrompt({
+    title,
+    url,
+    contentType,
+    transcript,
+    summary,
+    keyLearnings,
+    actionItems,
+    creatorComments,
+    viewerComments,
+    messages
+  });
+
+  try {
+    logDebug(`Chat (provider=${provider || 'claude'}, model=${model || 'default'}, turns=${messages.length}, prompt=${prompt.length} chars)`);
+    const result = await bridge.chat(prompt, { model });
+    if (!result.success) return result;
+    return { success: true, reply: result.reply };
+  } catch (error) {
+    logDebug(`Error in chat: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * Serialize the full conversation context into a single prompt string.
+ * Order: system instructions → source material → generated artifacts → comments → conversation history.
+ */
+function buildChatPrompt({ title, url, contentType, transcript, summary, keyLearnings, actionItems, creatorComments, viewerComments, messages }) {
+  // Truncate transcript to keep prompt within reasonable bounds.
+  const MAX_TRANSCRIPT = 50000;
+  const truncatedTranscript = transcript && transcript.length > MAX_TRANSCRIPT
+    ? transcript.substring(0, MAX_TRANSCRIPT) + '...[truncated]'
+    : (transcript || '');
+
+  const sourceLabel = contentType === 'article' ? 'article'
+    : contentType === 'webpage' ? 'web page'
+    : contentType === 'selected_text' ? 'selected text'
+    : 'video transcript';
+
+  let prompt = `You are an assistant helping the user explore and understand a piece of content they've already summarized. Answer their questions using the source material below as your primary source of truth. When the source doesn't cover something, say so plainly rather than guessing.
+
+Format responses as natural prose with markdown when it helps readability (lists, code blocks, **bold**). Keep answers focused and skimmable. Quote the source when it strengthens your answer.
+
+`;
+
+  prompt += `## Content Metadata\n`;
+  if (title) prompt += `Title: ${title}\n`;
+  if (url) prompt += `URL: ${url}\n`;
+  prompt += `Type: ${sourceLabel}\n\n`;
+
+  if (summary) {
+    prompt += `## Generated Summary\n${summary}\n\n`;
+  }
+
+  if (Array.isArray(keyLearnings) && keyLearnings.length > 0) {
+    prompt += `## Key Learnings (already extracted)\n`;
+    keyLearnings.forEach((l) => { prompt += `- ${l}\n`; });
+    prompt += `\n`;
+  }
+
+  if (Array.isArray(actionItems) && actionItems.length > 0) {
+    prompt += `## Action Items (already extracted)\n`;
+    actionItems.forEach((a) => { prompt += `- ${a}\n`; });
+    prompt += `\n`;
+  }
+
+  if (Array.isArray(creatorComments) && creatorComments.length > 0) {
+    const valid = creatorComments.filter((c) => c && c.text && c.text.length >= 15);
+    if (valid.length > 0) {
+      prompt += `## Creator Comments\n`;
+      valid.forEach((c, i) => { prompt += `${i + 1}. "${c.text}"\n`; });
+      prompt += `\n`;
+    }
+  }
+
+  if (Array.isArray(viewerComments) && viewerComments.length > 0) {
+    const useful = viewerComments
+      .filter((c) => c && c.text && c.text.length >= 30 && (c.likes || 0) >= 10)
+      .slice(0, 10);
+    if (useful.length > 0) {
+      prompt += `## Top Viewer Comments (use cautiously — may include jokes)\n`;
+      useful.forEach((c, i) => { prompt += `${i + 1}. [${c.likes} likes] "${c.text}"\n`; });
+      prompt += `\n`;
+    }
+  }
+
+  if (truncatedTranscript) {
+    prompt += `## Source Material (${sourceLabel})\n${truncatedTranscript}\n\n`;
+  }
+
+  prompt += `## Conversation\n`;
+  // All but the final message are history; the final one is what we answer now.
+  messages.forEach((m, i) => {
+    const role = m.role === 'assistant' ? 'Assistant' : 'User';
+    const isLast = i === messages.length - 1;
+    if (isLast && m.role === 'user') {
+      prompt += `\n${role} (current question): ${m.content}\n`;
+    } else {
+      prompt += `\n${role}: ${m.content}\n`;
+    }
+  });
+
+  prompt += `\nRespond as the assistant. Reply only with the response — do not prefix with "Assistant:" or include the user's message.`;
+
+  return prompt;
 }
 
 // Handle generate audio action
@@ -368,18 +518,34 @@ async function handleListVoices(message) {
   }
 }
 
-// Handle check auth action - checks if Claude CLI is available
+// Handle check auth action - reports availability for each supported provider
 async function handleCheckAuth(message) {
   try {
     logDebug('Checking CLI auth status...');
+
+    let claudeAvailable = false;
     try {
       execSync('which claude 2>/dev/null || test -f ~/.claude/local/claude', { timeout: 3000 });
-      logDebug('Auth status: cli (available: true)');
-      return { success: true, authMethod: 'cli', available: true };
+      claudeAvailable = true;
     } catch {
-      logDebug('Auth status: none (available: false)');
-      return { success: true, authMethod: 'none', available: false };
+      // not installed
     }
+
+    const codexAvailable = !!codexBridge.findCodexCommand();
+    const codexLoggedIn = codexBridge.isLoggedIn();
+
+    logDebug(`Auth status: claude=${claudeAvailable} codex=${codexAvailable && codexLoggedIn}`);
+
+    return {
+      success: true,
+      // Legacy fields for backwards compatibility with the old settings UI.
+      authMethod: claudeAvailable ? 'cli' : 'none',
+      available: claudeAvailable,
+      providers: {
+        claude: { available: claudeAvailable },
+        codex: { available: codexAvailable, loggedIn: codexLoggedIn }
+      }
+    };
   } catch (error) {
     logDebug(`Error checking auth: ${error.message}`);
     return { success: false, error: error.message };

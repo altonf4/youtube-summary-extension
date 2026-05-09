@@ -150,10 +150,16 @@ const sectionsListEl = document.getElementById('template-sections-list');
 const presetsListEl = document.getElementById('template-presets-list');
 const formatPreviewEl = document.getElementById('format-preview-content');
 
-// Claude CLI settings elements
+// AI provider + CLI settings elements
+const providerSelect = document.getElementById('provider-select');
 const claudeModelSelect = document.getElementById('claude-model');
+const codexModelInput = document.getElementById('codex-model');
+const claudeModelGroup = document.getElementById('claude-model-group');
+const codexModelGroup = document.getElementById('codex-model-group');
 const authStatusDot = document.getElementById('auth-status-dot');
 const authStatusText = document.getElementById('auth-status-text');
+const codexAuthStatusDot = document.getElementById('codex-auth-status-dot');
+const codexAuthStatusText = document.getElementById('codex-auth-status-text');
 
 // Audio settings elements
 const apiKeyInput = document.getElementById('elevenlabs-api-key');
@@ -407,7 +413,9 @@ async function loadSettings() {
   try {
     const result = await chrome.storage.sync.get([
       'remindersCheckedByDefault',
+      'aiProvider',
       'claudeModel',
+      'codexModel',
       'elevenlabsApiKey',
       'elevenlabsVoiceId',
       'audioIncludeSummary',
@@ -422,12 +430,23 @@ async function loadSettings() {
     // Reminders default
     remindersCheckedCheckbox.checked = result.remindersCheckedByDefault !== false;
 
+    // Provider selection
+    if (providerSelect) {
+      providerSelect.value = result.aiProvider === 'codex' ? 'codex' : 'claude';
+      updateProviderUI(providerSelect.value);
+    }
+
     // Claude CLI settings
     if (claudeModelSelect) {
       claudeModelSelect.value = result.claudeModel || 'sonnet';
     }
 
-    // Check CLI status
+    // Codex model
+    if (codexModelInput) {
+      codexModelInput.value = result.codexModel || '';
+    }
+
+    // Check CLI status (covers both providers)
     checkAuthStatus();
 
     // Audio settings
@@ -464,7 +483,9 @@ async function saveSettings() {
       templates: currentTemplates,
       analysisInstructions: youtubeInstructions,
       remindersCheckedByDefault: remindersCheckedCheckbox.checked,
+      aiProvider: providerSelect ? providerSelect.value : 'claude',
       claudeModel: claudeModelSelect ? claudeModelSelect.value : 'sonnet',
+      codexModel: codexModelInput ? codexModelInput.value.trim() : '',
       elevenlabsApiKey: apiKeyInput ? apiKeyInput.value : '',
       elevenlabsVoiceId: voiceSelect ? voiceSelect.value : '',
       audioIncludeSummary: audioIncludeSummary ? audioIncludeSummary.checked : true,
@@ -651,42 +672,75 @@ function setupAnthropicSettings() {
 }
 
 /**
- * Check CLI auth status by sending checkAuth to native host
+ * Hide/show provider-specific model controls.
+ */
+function updateProviderUI(provider) {
+  const isCodex = provider === 'codex';
+  if (claudeModelGroup) claudeModelGroup.style.display = isCodex ? 'none' : '';
+  if (codexModelGroup) codexModelGroup.style.display = isCodex ? '' : 'none';
+}
+
+if (providerSelect) {
+  providerSelect.addEventListener('change', () => {
+    updateProviderUI(providerSelect.value);
+  });
+}
+
+/**
+ * Check CLI auth status for both Claude and Codex.
  */
 async function checkAuthStatus() {
-  if (!authStatusDot || !authStatusText) return;
-
-  authStatusDot.className = 'auth-status-dot checking';
-  authStatusText.textContent = 'Checking...';
+  if (authStatusDot && authStatusText) {
+    authStatusDot.className = 'auth-status-dot checking';
+    authStatusText.textContent = 'Checking...';
+  }
+  if (codexAuthStatusDot && codexAuthStatusText) {
+    codexAuthStatusDot.className = 'auth-status-dot checking';
+    codexAuthStatusText.textContent = 'Checking...';
+  }
 
   try {
     const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage({
-        action: 'checkAuth'
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-        } else {
-          resolve(response);
-        }
+      chrome.runtime.sendMessage({ action: 'checkAuth' }, (resp) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(resp);
       });
     });
 
     if (response && response.success) {
-      const methodLabels = {
-        cli: 'Claude CLI detected',
-        none: 'Claude CLI not found'
-      };
+      const claudeAvail = !!(response.providers?.claude?.available ?? response.available);
+      if (authStatusDot && authStatusText) {
+        authStatusDot.className = `auth-status-dot ${claudeAvail ? 'connected' : 'disconnected'}`;
+        authStatusText.textContent = claudeAvail ? 'Claude CLI detected' : 'Claude CLI not found';
+      }
 
-      authStatusDot.className = `auth-status-dot ${response.available ? 'connected' : 'disconnected'}`;
-      authStatusText.textContent = methodLabels[response.authMethod] || response.authMethod;
+      const codexInfo = response.providers?.codex || {};
+      const codexReady = codexInfo.available && codexInfo.loggedIn;
+      if (codexAuthStatusDot && codexAuthStatusText) {
+        codexAuthStatusDot.className = `auth-status-dot ${codexReady ? 'connected' : 'disconnected'}`;
+        if (!codexInfo.available) codexAuthStatusText.textContent = 'Codex CLI not found';
+        else if (!codexInfo.loggedIn) codexAuthStatusText.textContent = 'Codex installed — run `codex login`';
+        else codexAuthStatusText.textContent = 'Codex CLI ready';
+      }
     } else {
-      authStatusDot.className = 'auth-status-dot disconnected';
-      authStatusText.textContent = 'Claude CLI not found';
+      if (authStatusDot && authStatusText) {
+        authStatusDot.className = 'auth-status-dot disconnected';
+        authStatusText.textContent = 'Claude CLI not found';
+      }
+      if (codexAuthStatusDot && codexAuthStatusText) {
+        codexAuthStatusDot.className = 'auth-status-dot disconnected';
+        codexAuthStatusText.textContent = 'Codex CLI not found';
+      }
     }
   } catch (error) {
-    authStatusDot.className = 'auth-status-dot disconnected';
-    authStatusText.textContent = 'Connection error';
+    if (authStatusDot && authStatusText) {
+      authStatusDot.className = 'auth-status-dot disconnected';
+      authStatusText.textContent = 'Connection error';
+    }
+    if (codexAuthStatusDot && codexAuthStatusText) {
+      codexAuthStatusDot.className = 'auth-status-dot disconnected';
+      codexAuthStatusText.textContent = 'Connection error';
+    }
   }
 }
 

@@ -75,15 +75,24 @@
         </div>
       </section>
 
-      <!-- Claude CLI Settings -->
+      <!-- AI Provider Settings -->
       <section class="setting-section">
-        <h2>Claude CLI</h2>
+        <h2>AI Provider</h2>
         <p class="section-description">
-          This extension uses the Claude Code CLI for inference. Make sure <code>claude</code> is installed and available in your PATH.
+          Choose which CLI to call for summaries and chat. Both providers run locally and use OAuth credentials cached on your machine — no API keys needed.
         </p>
 
         <div class="form-group">
-          <label>CLI Status</label>
+          <label for="provider-select">Provider</label>
+          <select id="provider-select">
+            <option value="claude">Claude Code (default)</option>
+            <option value="codex">OpenAI Codex</option>
+          </select>
+          <p class="setting-hint">Claude needs <code>claude</code> in your PATH. Codex needs <code>codex</code> installed and <code>codex login</code> completed.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Claude CLI Status</label>
           <div class="auth-status" id="auth-status">
             <span class="auth-status-dot" id="auth-status-dot"></span>
             <span id="auth-status-text">Checking...</span>
@@ -91,13 +100,27 @@
         </div>
 
         <div class="form-group">
-          <label for="claude-model">Model</label>
+          <label>Codex CLI Status</label>
+          <div class="auth-status" id="codex-auth-status">
+            <span class="auth-status-dot" id="codex-auth-status-dot"></span>
+            <span id="codex-auth-status-text">Checking...</span>
+          </div>
+        </div>
+
+        <div class="form-group" id="claude-model-group">
+          <label for="claude-model">Claude Model</label>
           <select id="claude-model">
             <option value="sonnet">Claude Sonnet (recommended)</option>
             <option value="opus">Claude Opus</option>
             <option value="haiku">Claude Haiku</option>
           </select>
           <p class="setting-hint">Sonnet offers the best balance of speed and quality. Opus is more capable but slower. Haiku is fastest but less detailed.</p>
+        </div>
+
+        <div class="form-group" id="codex-model-group" style="display: none;">
+          <label for="codex-model">Codex Model</label>
+          <input type="text" id="codex-model" placeholder="leave blank for codex default (gpt-5)" />
+          <p class="setting-hint">Examples: <code>gpt-5</code>, <code>gpt-5-codex</code>, <code>o3</code>. Leave blank to use whatever <code>codex</code> picks by default.</p>
         </div>
       </section>
 

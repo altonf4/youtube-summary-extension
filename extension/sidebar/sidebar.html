@@ -229,29 +229,39 @@
           </div>
         </div>
 
-        <!-- Follow-up Prompt Section -->
+        <!-- Chat / Follow-up Section -->
         <div class="follow-up-section" id="follow-up-section">
           <div class="follow-up-header">
             <h2>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
-              Extract More
+              Chat with this content
+              <button id="chat-clear-btn" class="chat-clear-btn" title="Clear conversation">Clear</button>
             </h2>
           </div>
-          <div class="follow-up-examples">
+          <div class="chat-mode-toggle">
+            <label class="chat-mode-option">
+              <input type="radio" name="chat-mode" value="chat" checked>
+              <span>Chat (multi-turn)</span>
+            </label>
+            <label class="chat-mode-option">
+              <input type="radio" name="chat-mode" value="extract">
+              <span>Extract to Learnings</span>
+            </label>
+          </div>
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="follow-up-examples" id="chat-examples">
             <span class="examples-label">Try:</span>
+            <button class="example-chip" data-prompt="What are the main arguments and how well are they supported?">Strength of arguments</button>
             <button class="example-chip" data-prompt="What specific tools, frameworks, or resources were mentioned?">Tools mentioned</button>
             <button class="example-chip" data-prompt="Extract any statistics, numbers, or data points discussed">Statistics</button>
-            <button class="example-chip" data-prompt="What action items or next steps should I take?">Action items</button>
-            <button class="example-chip" data-prompt="What are the key quotes or memorable phrases?">Key quotes</button>
+            <button class="example-chip" data-prompt="What does the source actually say about [topic]? Quote the relevant parts.">Quote on topic</button>
           </div>
           <div class="follow-up-input-container">
             <textarea
               id="follow-up-input"
-              placeholder="Or type your own question..."
+              placeholder="Ask a follow-up question..."
               rows="2"
             ></textarea>
             <button id="follow-up-btn" class="follow-up-btn">
@@ -259,12 +269,12 @@
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
               </svg>
-              Ask Claude
+              <span id="follow-up-btn-label">Send</span>
             </button>
           </div>
           <div class="follow-up-loading" id="follow-up-loading" style="display: none;">
             <div class="follow-up-spinner"></div>
-            <span>Claude is extracting more insights...</span>
+            <span id="follow-up-loading-text">Thinking...</span>
           </div>
         </div>
 

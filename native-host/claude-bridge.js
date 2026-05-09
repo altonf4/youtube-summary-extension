@@ -875,9 +875,33 @@ function parseAsPlainText(text) {
   return learnings;
 }
 
+/**
+ * Multi-turn chat with Claude CLI.
+ * The CLI is one-shot, so the caller serializes the conversation history
+ * into a single prompt; we just shuttle bytes and return Claude's reply.
+ * @param {string} prompt - Fully assembled prompt including history.
+ * @param {Object} options - { model }
+ * @returns {Promise<{success: boolean, reply?: string, error?: string}>}
+ */
+async function chat(prompt, options = {}) {
+  const log = (msg) => logger.log(msg, 'claude-bridge:chat');
+  const { model } = options;
+
+  try {
+    log(`Chat prompt length: ${prompt.length} characters`);
+    const response = await callClaudeCode(prompt, () => {}, { model });
+    log(`Chat response: ${response.length} characters`);
+    return { success: true, reply: response.trim() };
+  } catch (error) {
+    log(`ERROR: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   generateSummary,
   generateFollowUp,
+  chat,
   // Exported for testing
   createPrompt,
   createArticlePrompt,
