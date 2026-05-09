@@ -2,8 +2,6 @@
 
 > Generate AI-powered summaries of YouTube videos using Claude and save them to Apple Notes.
 
-![Extension Banner](images/banner.png)
-
 ## What is this?
 
 YouTube Summary Extension is a Chrome extension that uses your Claude Code subscription to generate concise summaries and key learnings from any YouTube video with captions. It extracts actionable insights and saves them directly to Apple Notes with folder organization.
