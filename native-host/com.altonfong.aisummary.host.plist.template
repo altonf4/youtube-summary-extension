@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.altonfong.aisummary.host</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__NODE_PATH__</string>
+        <string>__AGENT_SERVER_JS__</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <!-- Critical: load only into the Aqua (GUI) session so the agent inherits
+         the user's unlocked login keychain. Without this the agent runs in a
+         StandardIO/Background session and the Claude CLI reports "Not logged
+         in" because it can't read its OAuth token. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>__PATH__</string>
+        <key>HOME</key>
+        <string>__HOME__</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/aisummary-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/aisummary-agent.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

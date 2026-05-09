@@ -4,6 +4,76 @@ This document tracks all feature requests and implementations for the YouTube Su
 
 ## Implemented Features
 
+### Safari (macOS) Support
+**Request:** "can you build a version of this extension that works on safari?"
+
+**Implementation:**
+- Added a Safari Web Extension build that wraps the existing `extension/` folder.
+  Apple requires Safari extensions to ship inside a containing macOS app, so the
+  build under `safari/AI Summary/` produces a `.app` whose embedded App Extension
+  bundles the same `extension/` source via Xcode folder references — Chrome and
+  Safari share one source of truth.
+- **Four-tier architecture** required by Safari's sandbox rules + the
+  macOS keychain's session-isolation behavior:
+  1. **Extension (`AI Summary Extension.appex`)** — sandboxed, registered with
+     Safari. A thin XPC client.
+  2. **XPC service (`NodeBridge.xpc`, embedded in the appex's
+     `Contents/XPCServices/`)** — unsandboxed; opens a Unix socket per
+     request to the LaunchAgent. Just a transport adapter.
+  3. **LaunchAgent (`com.altonfong.aisummary.host`)** — runs `agent-server.js`
+     in the Aqua session (via `LimitLoadToSessionType=Aqua` in the plist),
+     so it has full login-keychain access. Listens on a Unix socket at
+     `~/Library/Caches/com.altonfong.aisummary/host.sock` and spawns a fresh
+     `host.js` per accepted connection.
+  4. **`native-host/host.js`** — unchanged from the Chrome build.
+- All Anthropic API, Apple Notes, and Apple Reminders logic in `native-host/`
+  is reused unchanged.
+- `extension/background.js` detects Safari at runtime by checking for the
+  `safari-web-extension://` URL scheme and uses the wrapper app's bundle ID
+  (`com.altonfong.aisummary`) for `chrome.runtime.connectNative`. Chrome continues
+  to use the existing `com.youtube.summary` host name.
+- `install-safari.sh`: detects the developer's Apple Development signing
+  identity, extracts the team ID from the cert's `OU=` field, builds with
+  `xcodebuild -allowProvisioningUpdates DEVELOPMENT_TEAM=…` so Xcode generates
+  the provisioning profile automatically, installs to `/Applications`, and
+  writes `~/Library/Application Support/AI Summary/config.json` with the
+  user's `node` and `host.js` paths.
+
+**Use Case:**
+Safari is the default browser on every Mac. This lets the user use the extension
+without switching to Chrome. The Safari version reuses 100% of the existing
+native host (Claude API, Apple Notes, AppleScript) — no Anthropic SDK was
+re-implemented in Swift.
+
+**Why an XPC service instead of spawning Node directly from the extension:**
+The first attempt disabled App Sandbox on the extension so it could spawn `node`
+directly. Safari refused to register the extension with the unified-log error
+`extensionkit:discovery: Extension is not entitled to run in the App Sandbox`.
+Safari requires Web Extensions to be sandboxed, and sandboxed processes cannot
+spawn arbitrary children. The XPC service pattern is Apple's canonical answer:
+the sandboxed extension talks via NSXPCConnection to a co-bundled XPC service
+that has its own (looser) sandbox config.
+
+**Why a LaunchAgent on top of the XPC service:**
+The XPC service initially spawned `node host.js` as a direct child. host.js
+worked, but `claude --print` reported "Not logged in" because the Claude CLI
+stores its OAuth token in the user's macOS login keychain, and the XPC
+service is launched by xpcproxy in a security session that doesn't have the
+keychain unlocked (a probe with `security find-generic-password ...`
+returned `errSecInteractionNotAllowed (status 36)`). Running `host.js` inside
+a LaunchAgent pinned to the Aqua session via `LimitLoadToSessionType=Aqua`
+gives it the same keychain handle as Terminal/Finder/Safari itself. The XPC
+service was reduced to a thin Unix-socket transport adapter.
+
+**Known limitations (v1):**
+- Streaming progress messages are dropped on Safari. Safari Web Extensions can't
+  push spontaneous messages from the native side back to a connectNative port —
+  only request/response per `port.postMessage`. The UI shows a generic spinner
+  on Safari instead of the staged progress visible in Chrome.
+- Signed with the developer's Apple Development cert (auto-provisioning), so it
+  works on the installing developer's Mac only. Distribution to others would
+  need a Developer ID Application cert + notarization (a follow-up, not in v1).
+
 ### 1. Popup Banner Notification (instead of icon button)
 **Request:** Replace the small icon button with a more visible popup notification when a YouTube video is detected.
 

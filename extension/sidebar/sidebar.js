@@ -345,6 +345,61 @@ let cachedInputTokens = 0;
 let elapsedTimer = null;
 let elapsedStartTime = null;
 
+// Safari Web Extensions can't push progress events from the native side back
+// to the page during a single request — `browser.runtime.sendNativeMessage`
+// is request/response only. On Safari we simulate the progress UI on a fixed
+// timeline so the user sees movement instead of "Starting..." forever. The
+// final stages (`parsing` / `complete`) still fire from the real response.
+const IS_SAFARI = typeof window !== 'undefined'
+    && typeof window.location !== 'undefined'
+    && String(window.location.protocol).startsWith('safari-web-extension:');
+
+let safariProgressTimers = [];
+
+/**
+ * Estimate input tokens for the prompt the native host will build.
+ * Mirrors the `Math.round(prompt.length / 4)` heuristic used in
+ * native-host/claude-bridge.js, just rolled up client-side. The transcript
+ * dominates by far; including comments/description for closer parity.
+ */
+function estimateInputTokens(transcript, comments = []) {
+  let chars = (transcript || '').length;
+  for (const c of comments) {
+    if (c && typeof c === 'string') chars += c.length;
+    else if (c && c.text) chars += c.text.length;
+  }
+  return Math.round(chars / 4);
+}
+
+/**
+ * Drive the multi-stage progress UI on a fixed timeline. Safari can't
+ * deliver real progress events mid-flight; this gives the user honest-feeling
+ * feedback that something's happening, including a rough token count for
+ * the `waiting` stage so the "~0 tokens" hole goes away.
+ */
+function startSafariProgressSimulation({ inputTokens = 0 } = {}) {
+  if (!IS_SAFARI) return;
+  cancelSafariProgressSimulation();
+  // Stages we synthesize. Times tuned to typical CLI-mode runs: most of the
+  // wall clock is in `waiting` while Claude streams its response.
+  const schedule = [
+    { delayMs: 0,    stage: 'preparing', message: 'Preparing transcript...' },
+    { delayMs: 800,  stage: 'sending',   message: 'Sending to Claude...',  inputTokens },
+    { delayMs: 1800, stage: 'waiting',   message: 'Claude is analyzing...', inputTokens },
+  ];
+  for (const event of schedule) {
+    const t = setTimeout(() => {
+      updateProgressUI(event);
+    }, event.delayMs);
+    safariProgressTimers.push(t);
+  }
+}
+
+function cancelSafariProgressSimulation() {
+  for (const t of safariProgressTimers) clearTimeout(t);
+  safariProgressTimers = [];
+}
+
 // Update progress UI based on stage
 function updateProgressUI(progress) {
   const { stage, message, chars, inputTokens } = progress;
@@ -433,6 +488,7 @@ function resetProgressUI() {
   completedStages.clear();
   cachedInputTokens = 0;
   stopElapsedTimer();
+  cancelSafariProgressSimulation();
   document.querySelectorAll('.progress-stage').forEach(el => {
     el.classList.remove('active', 'completed');
   });
@@ -516,25 +572,38 @@ async function handleGenerateSummary() {
     const templateConfig = await loadTemplateConfig();
     const apiSettings = await loadApiSettings();
 
-    // Step 2: Send transcript to native host for Claude processing
-    const response = await sendNativeMessage({
-      action: 'generateSummary',
-      contentType: currentContentType,
-      videoId: currentVideoInfo.videoId,
-      title: currentVideoInfo.title,
-      transcript: transcriptResult.transcript,
-      description: currentVideoInfo.description || '',
-      descriptionLinks: currentVideoInfo.links || [],
-      creatorComments: cachedCreatorComments,
-      viewerComments: cachedViewerComments,
-      customInstructions: customInstructions,
-      templateSections: templateConfig?.sections || null,
-      model: apiSettings.claudeModel,
-      // Article-specific fields
-      author: currentVideoInfo.author || null,
-      siteName: currentVideoInfo.siteName || null,
-      publishDate: currentVideoInfo.publishDate || null
-    });
+    // Step 2: Send transcript to native host for Claude processing.
+    // On Safari, kick off a timeline-based fake progress to avoid the UI
+    // looking stuck (Safari can't deliver mid-flight progress events).
+    // Pass an estimated token count so the "~N tokens" readout isn't 0.
+    const estimatedTokens = estimateInputTokens(
+      transcriptResult.transcript,
+      [...(cachedCreatorComments || []), ...(cachedViewerComments || [])]
+    );
+    startSafariProgressSimulation({ inputTokens: estimatedTokens });
+    let response;
+    try {
+      response = await sendNativeMessage({
+        action: 'generateSummary',
+        contentType: currentContentType,
+        videoId: currentVideoInfo.videoId,
+        title: currentVideoInfo.title,
+        transcript: transcriptResult.transcript,
+        description: currentVideoInfo.description || '',
+        descriptionLinks: currentVideoInfo.links || [],
+        creatorComments: cachedCreatorComments,
+        viewerComments: cachedViewerComments,
+        customInstructions: customInstructions,
+        templateSections: templateConfig?.sections || null,
+        model: apiSettings.claudeModel,
+        // Article-specific fields
+        author: currentVideoInfo.author || null,
+        siteName: currentVideoInfo.siteName || null,
+        publishDate: currentVideoInfo.publishDate || null
+      });
+    } finally {
+      cancelSafariProgressSimulation();
+    }
 
     // Abort if a newer generation started while we were waiting
     if (thisGenerationId !== currentGenerationId) return;

@@ -18,5 +18,12 @@ Thumbs.db
 dist/
 build/
 
+# Xcode (Safari extension)
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+*.xcuserstate
+
 # Test coverage
 coverage/
+.gstack/

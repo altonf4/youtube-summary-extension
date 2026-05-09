@@ -83,13 +83,32 @@ youtube-summary-extension/
 │       └── settings.css         # Settings styles
 ├── native-host/                  # Node.js native messaging host
 │   ├── host.js                  # Main entry point (stdin/stdout)
+│   ├── agent-server.js          # Safari only: Unix-socket wrapper run as a
+│   │                            #   LaunchAgent in the Aqua session so it
+│   │                            #   has keychain access. Spawns host.js per
+│   │                            #   accepted connection.
 │   ├── claude-bridge.js         # Claude CLI/API integration
 │   ├── anthropic-client.js      # Direct Anthropic API client
 │   ├── apple-notes.js           # AppleScript wrapper
 │   ├── apple-reminders.js       # Apple Reminders via AppleScript
 │   ├── package.json             # Dependencies
-│   └── com.youtube.summary.json # Native messaging manifest template
-├── install.sh                    # Installation script
+│   ├── com.youtube.summary.json # Chrome native messaging manifest template
+│   └── com.altonfong.aisummary.host.plist.template  # Safari LaunchAgent template
+├── safari/                       # Safari Web Extension wrapper (macOS only)
+│   └── AI Summary/
+│       ├── AI Summary.xcodeproj  # Xcode project (folder refs to ../../../extension)
+│       ├── AI Summary/           # Wrapper macOS app target (stub UI)
+│       ├── AI Summary Extension/ # Safari Web Extension target (sandboxed)
+│       │   ├── SafariWebExtensionHandler.swift  # XPC client; forwards to NodeBridge
+│       │   └── AI Summary Extension.entitlements  # sandbox=YES, network.client
+│       ├── NodeBridge/           # XPC service target (UNsandboxed)
+│       │   ├── main.swift                   # NSXPCListener boot
+│       │   ├── NodeBridgeService.swift      # Spawns and proxies host.js
+│       │   └── Info.plist                   # XPCService dict
+│       └── Shared/
+│           └── NodeBridgeProtocol.swift     # NSXPCProtocol shared by both
+├── install.sh                    # Chrome installer (native messaging manifest)
+├── install-safari.sh             # Safari installer (xcodebuild + /Applications)
 ├── README.md                     # User documentation
 ├── CLAUDE.md                     # This file (dev guide)
 ├── FEATURES.md                   # Feature request log (UPDATE THIS when adding features!)
@@ -141,7 +160,13 @@ youtube-summary-extension/
 - Routes messages between sidebar and native host
 - Handles connection lifecycle and errors
 
-**Native Host Name**: `com.youtube.summary`
+**Native Host Name**:
+- Chrome: `com.youtube.summary` (matches the manifest in `NativeMessagingHosts/`)
+- Safari: `com.altonfong.aisummary` (the wrapper app's bundle ID — Safari resolves
+  `connectNative` by bundle ID, not manifest)
+
+The script feature-detects Safari via the `safari-web-extension://` URL scheme
+and picks the right name automatically.
 
 ### 4. Native Host (`native-host/host.js`)
 
@@ -166,7 +191,80 @@ youtube-summary-extension/
 
 **Important**: The system prompt wrapper ensures consistent output regardless of user customization.
 
-### 6. Apple Notes (`native-host/apple-notes.js`)
+### 6. Safari Bridge (XPC service + Aqua-session LaunchAgent)
+
+**Purpose**: On Safari, replaces Chrome's Native Messaging API. Routes
+extension messages to `native-host/host.js` and proxies the same
+length-prefixed JSON protocol Chrome uses.
+
+**Three tiers, layered for sandbox/keychain reasons**:
+
+```
+┌──────────────────────────────────────────────────┐
+│ Safari Web Extension (.appex)                    │  sandbox = YES
+│   SafariWebExtensionHandler.swift                │
+│           │ NSXPCConnection                      │
+│           ▼                                      │
+│   NodeBridge.xpc (in appex/Contents/XPCServices) │  sandbox = NO
+│     opens AF_UNIX socket per request             │
+│           │ Unix socket                          │
+│           ▼                                      │
+│   LaunchAgent: agent-server.js                   │  Aqua session
+│     listens on ~/Library/Caches/com.altonfong.  │
+│     aisummary/host.sock; spawns host.js per     │
+│     incoming connection                          │
+│           │ stdin/stdout                         │
+│           ▼                                      │
+│   node host.js  (existing, unchanged)            │
+│           │ spawns                               │
+│           ▼                                      │
+│   claude --print  (reads keychain credential)    │
+└──────────────────────────────────────────────────┘
+```
+
+**Why each tier exists**:
+
+1. *Sandbox on the Extension*: Safari refuses to discover Web Extensions
+   whose containing app target is not sandboxed
+   (`extensionkit:discovery: Extension is not entitled to run in the App Sandbox`).
+2. *Unsandboxed XPC service*: a sandboxed extension can't spawn arbitrary
+   child processes, but a co-bundled XPC service can have its own (looser)
+   sandbox config. We make this one a thin transport adapter.
+3. *Aqua-session LaunchAgent*: when launchd spawns the XPC service via
+   xpcproxy, the service runs in a security session that **doesn't have the
+   user's login keychain unlocked**. The Claude CLI keeps its OAuth token in
+   the keychain, so any spawn from the XPC service reports "Not logged in".
+   We sidestep this by running `host.js` inside a LaunchAgent with
+   `LimitLoadToSessionType=Aqua` (the GUI session). That agent inherits the
+   user's unlocked keychain handle the same way Terminal does.
+
+The XPC service no longer spawns Node; it just opens a fresh AF_UNIX socket
+to the agent for each Safari request, sends one framed JSON message, reads
+frames until the non-progress final response arrives, and closes.
+`agent-server.js` spawns a fresh `host.js` per accepted connection so each
+request is isolated.
+
+**Why spawn `host.js` rather than reimplement everything in Swift**: a single
+source of truth for the Anthropic client / AppleScript automation. The
+Chrome and Safari builds share 100% of `native-host/`.
+
+**Idle cost**: the agent is a Node.js process that holds ~46 MB resident and
+~0% CPU when no requests are in flight. host.js processes only exist for
+the duration of a single request and exit when the socket closes.
+
+**Config**: `install-safari.sh` writes `~/Library/Application Support/AI Summary/config.json`
+with `nodePath`, `hostPath`, and `socketPath`. The plist template is at
+`native-host/com.altonfong.aisummary.host.plist.template`.
+
+**Limitations**:
+- Drops `progress` messages. Safari's port API is request/response only —
+  the native side can't push spontaneous events. Final results work; staged
+  progress UI doesn't.
+- Distribution to others (Mac App Store, Developer ID + notarization) is not
+  yet wired up. The current build uses an Apple Development cert + automatic
+  provisioning profile; this works only on the developer's own Mac.
+
+### 7. Apple Notes (`native-host/apple-notes.js`)
 
 **Purpose**: Creates notes in Apple Notes via AppleScript
 

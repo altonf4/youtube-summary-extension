@@ -18,10 +18,11 @@ For detailed usage instructions with screenshots, see the **[Wiki](../../wiki)**
 ## Prerequisites
 
 - **macOS** (for Apple Notes integration)
-- **Google Chrome** or Chromium-based browser
+- **Google Chrome / Chromium** *or* **Safari** (see [Safari install](#safari-installation))
 - **Node.js** (v14 or higher) - [Download](https://nodejs.org/)
 - **Claude Code CLI** - Must be installed and accessible in your PATH
 - **Claude Code Subscription** - Required to generate summaries
+- **Xcode** (Safari only) - Required to build the wrapper app
 
 ### Installing Claude Code
 
@@ -80,6 +81,56 @@ Paste the Extension ID you copied in Step 2 when prompted.
 
 1. Go back to `chrome://extensions/`
 2. Click the **Reload** button on the YouTube Summary extension
+
+## Safari Installation
+
+The Safari build wraps the same `extension/` source in a macOS app. Apple
+requires Safari Web Extensions to ship inside an app bundle — there is no
+"Load unpacked" equivalent in Safari.
+
+### One-shot install
+
+```bash
+./install-safari.sh
+```
+
+The script:
+
+1. Detects your Apple Development signing identity and team ID
+2. Builds `safari/AI Summary/` with `xcodebuild -allowProvisioningUpdates`
+3. Installs `AI Summary.app` to `/Applications`
+4. Writes `~/Library/Application Support/AI Summary/config.json` with paths
+   to your `node`, `host.js`, and the agent's Unix socket
+5. Installs and loads `~/Library/LaunchAgents/com.altonfong.aisummary.host.plist`
+   into your Aqua (GUI) session via `launchctl bootstrap`. The agent runs
+   `native-host/agent-server.js`, which exposes `host.js` over a local Unix
+   socket so the Safari extension can reach it with full keychain access.
+
+### Enable in Safari
+
+1. Open `/Applications/AI Summary.app` once (the wrapper app — it just
+   registers the extension with Safari).
+2. Safari → Settings → Extensions → enable **AI Summary Extension**.
+3. If Safari asks, choose **Always Allow** for site access.
+4. If macOS Gatekeeper blocks the app on first launch (because it's
+   ad-hoc signed), right-click the app and choose **Open**.
+5. If Safari refuses to load the unsigned extension, enable
+   **Develop → Allow Unsigned Extensions** (you may need to re-enable this
+   each Safari relaunch).
+
+### What's different on Safari
+
+- **Streaming progress dropped.** Chrome shows staged progress while Claude
+  works (extracting transcript, fetching comments, generating summary).
+  Safari just shows a spinner — Safari Web Extensions can't push spontaneous
+  messages from the native side back to a `connectNative` port. Final result
+  is identical.
+- **Same native host.** Both browsers run `native-host/host.js`. No business
+  logic was duplicated in Swift.
+- **One background process.** A LaunchAgent (`com.altonfong.aisummary.host`)
+  runs in your GUI session so the Claude CLI can read its keychain
+  credentials. Idle cost is ~46 MB resident, ~0% CPU. To uninstall:
+  `launchctl bootout gui/$(id -u)/com.altonfong.aisummary.host && rm ~/Library/LaunchAgents/com.altonfong.aisummary.host.plist`.
 
 ## Usage
 

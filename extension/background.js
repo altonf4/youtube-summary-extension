@@ -1,7 +1,13 @@
 // Background Service Worker
-// Handles native messaging communication
-
-const NATIVE_HOST_NAME = 'com.youtube.summary';
+// Handles native messaging communication.
+//
+// Native messaging name resolution:
+//   - Chrome: matches a NativeMessagingHosts/com.youtube.summary.json manifest.
+//   - Safari: must match the bundle ID of the containing app (the wrapper app
+//     in safari/AI Summary). Safari's extension URL scheme reveals the runtime.
+const IS_SAFARI = typeof chrome.runtime.getURL === 'function'
+    && chrome.runtime.getURL('').startsWith('safari-web-extension://');
+const NATIVE_HOST_NAME = IS_SAFARI ? 'com.altonfong.aisummary' : 'com.youtube.summary';
 
 let nativePort = null;
 let pendingRequests = new Map();
