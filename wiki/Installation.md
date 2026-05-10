@@ -1,19 +1,21 @@
 # Installation Guide
 
-This guide walks you through setting up the YouTube Summary Extension on macOS.
+This guide walks you through setting up the AI Summary Extension on macOS.
+The full Chrome walkthrough is below; for Safari, see [Safari Installation](#safari-installation) at the bottom of this page (or the project README).
 
 ## Prerequisites
 
 Before you begin, make sure you have:
 
 - [ ] **macOS** (required for Apple Notes integration)
-- [ ] **Google Chrome** or a Chromium-based browser
-- [ ] **Node.js v14+** - [Download here](https://nodejs.org/)
-- [ ] **Claude Code CLI** with an active subscription
+- [ ] **Google Chrome** / Chromium-based browser, **or Safari**
+- [ ] **Node.js v14+** — [Download here](https://nodejs.org/)
+- [ ] **At least one AI CLI**, authenticated:
+      Claude Code CLI **or** OpenAI Codex CLI (with active subscription)
+- [ ] **Xcode** (Safari only — to build the wrapper app)
+- [ ] **ElevenLabs API key** (optional — only needed for audio narration)
 
-### Installing Claude Code
-
-If you don't have Claude Code installed:
+### Installing Claude Code (one option)
 
 ```bash
 # Recommended: via install script
@@ -26,10 +28,16 @@ brew install --cask claude-code
 npm install -g @anthropic-ai/claude-code
 ```
 
-Verify the installation:
+Verify: `claude --version` and `claude login`.
+
+### Installing OpenAI Codex CLI (the other option)
+
 ```bash
-claude --version
+npm install -g @openai/codex
+codex login
 ```
+
+You can install both — the extension lets you pick the active provider per task, or run both in **Compare mode**.
 
 ## Step 1: Clone the Repository
 
@@ -151,6 +159,35 @@ Replace:
 ### 3. Reload the Extension
 
 Go to `chrome://extensions/` and click Reload on the extension.
+
+---
+
+## Safari Installation
+
+The Safari build wraps the same `extension/` source in a macOS app — Apple
+requires Safari Web Extensions to ship inside an app bundle.
+
+```bash
+./install-safari.sh
+```
+
+The script builds the Xcode project, installs `AI Summary.app` to
+`/Applications`, writes a config file under `~/Library/Application Support/AI Summary/`,
+and loads a LaunchAgent so the Claude / Codex CLIs can reach the keychain.
+
+After the script finishes:
+
+1. Open `/Applications/AI Summary.app` once (registers the extension with Safari)
+2. Safari → **Settings → Extensions** → enable **AI Summary Extension**
+3. If macOS Gatekeeper blocks the app on first launch (because it's
+   ad-hoc signed), right-click the app and choose **Open**
+4. If Safari refuses to load the unsigned extension, enable
+   **Develop → Allow Unsigned Extensions**
+
+Safari shows a spinner instead of staged progress while the summary
+generates — final results are identical to Chrome. See
+[`docs/safari-troubleshooting.md`](https://github.com/altfong/youtube-summary-extension/blob/main/docs/safari-troubleshooting.md)
+in the repo for the full Safari runbook.
 
 ---
 

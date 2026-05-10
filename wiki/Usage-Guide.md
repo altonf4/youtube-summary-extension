@@ -2,6 +2,20 @@
 
 Learn how to generate AI summaries and save them to Apple Notes.
 
+## What you can summarize
+
+The extension works on more than YouTube:
+
+| Content type | How |
+|---|---|
+| **YouTube videos** | Built-in transcript + comments scraping |
+| **Articles / blog posts** | DOM-heuristic extractor |
+| **Generic web pages** | Best-effort fallback extractor |
+| **HTML5 videos with captions** | VTT / SRT pulled off the `<video>` element |
+| **A text selection** | Highlight any text → right-click → **Summarize selection** |
+
+The YouTube walkthrough below is the most common path; the same buttons (floating button / sidebar / Generate Summary) work on every supported page.
+
 ## Opening the Extension
 
 ### 1. Navigate to a YouTube Video

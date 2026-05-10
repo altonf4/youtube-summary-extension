@@ -1,11 +1,34 @@
 # Settings
 
-Customize how Claude analyzes your videos and configure audio narration.
+Customize how the AI analyzes your content, pick a provider, and configure audio narration.
 
 ## Accessing Settings
 
 Click the **gear icon** in the sidebar header to open Settings.
 
+## AI Provider
+
+Pick which AI does the analysis. Both providers run locally via their CLI — no extension-stored API keys.
+
+| Provider | Auth | Model field |
+|----------|------|-------------|
+| **Claude** | `claude login` (token in keychain) | Preset dropdown — `sonnet`, `opus`, `haiku` |
+| **Codex** | `codex login` (token in `~/.codex/auth.json`) | Free-text model name (default `gpt-5.5`) |
+
+The settings page shows live status dots for each CLI. If a dot is red, install or `login` to that CLI before selecting it.
+
+The sidebar also has a **Compare** mode that runs both providers in parallel and renders the results side by side.
+
+## Templates (per content type)
+
+The single "Analysis Instructions" field is now a per-content-type template system. The settings page shows:
+
+- A **content type selector** (YouTube video / Article / Web page / Selected text)
+- Per-type **instructions** (the prompt focus for that type)
+- A **sections list** — toggle, rename, and reorder the output sections (summary, key learnings, action items, relevant links, …) per type
+- **Presets** per content type (e.g., YouTube: Default / Educational / Tutorial / Business; Article: Default / Research Paper / News / Technical)
+
+Old `analysisInstructions` settings are migrated automatically into `templates.youtube_video.instructions` on first run.
 
 ## Analysis Instructions
 
@@ -165,7 +188,11 @@ Settings are stored in Chrome's sync storage:
 
 | Key | Description |
 |-----|-------------|
-| `analysisInstructions` | Custom Claude prompt |
+| `provider` | Active AI provider: `claude` or `codex` |
+| `claudeModel` | Claude model preset: `sonnet` / `opus` / `haiku` |
+| `codexModel` | Codex model name (default `gpt-5.5`) |
+| `templates` | Per-content-type prompt templates with sections, labels, and instructions |
+| `analysisInstructions` | Legacy Claude prompt (still written for backwards compat; superseded by `templates`) |
 | `remindersCheckedByDefault` | Action items default state |
 | `elevenlabsApiKey` | ElevenLabs API key |
 | `elevenlabsVoiceId` | Selected voice ID |

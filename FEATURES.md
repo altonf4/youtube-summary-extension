@@ -575,6 +575,8 @@ sidebar.js (updateProgressUI)
 - `extension/sidebar/styles.css` - Audio button/player styling
 
 ### 22. Direct Anthropic API with OAuth + API Key Authentication
+**⚠️ Superseded — reverted in commit `fbd421d` (`refactor: drop Anthropic API key support; rely on Claude CLI only`). The extension now spawns the Claude CLI exclusively for Claude requests. `native-host/anthropic-client.js` is no longer wired into `host.js` (kept for the test fixture). This entry is preserved for history.**
+
 **Request:** "Add direct Anthropic API integration using OAuth from Claude Code and an API key fallback, instead of always spawning the CLI."
 
 **Implementation:**
@@ -832,10 +834,11 @@ sidebar.js (updateProgressUI)
 ### Storage
 - `localStorage['youtube-summary-btn-position']` - Floating button position
 - `chrome.storage.local['folderSuggestions']` - Previously used folder names
-- `chrome.storage.sync['analysisInstructions']` - Custom analysis instructions
+- `chrome.storage.sync['analysisInstructions']` - Legacy custom analysis instructions (still written for backwards compat; superseded by `templates`)
 - `chrome.storage.sync['remindersCheckedByDefault']` - Whether action items are checked by default (default: true)
-- `chrome.storage.sync['anthropicApiKey']` - Anthropic API key (fallback when OAuth unavailable)
+- `chrome.storage.sync['provider']` - Active AI provider: `'claude'` or `'codex'`
 - `chrome.storage.sync['claudeModel']` - Claude model selection: 'sonnet' (default), 'opus', or 'haiku'
+- `chrome.storage.sync['codexModel']` - Codex model name (default `'gpt-5.5'`)
 - `chrome.storage.sync['elevenlabsApiKey']` - ElevenLabs API key
 - `chrome.storage.sync['elevenlabsVoiceId']` - Selected voice ID
 - `chrome.storage.sync['audioIncludeSummary']` - Include summary in audio (default: true)

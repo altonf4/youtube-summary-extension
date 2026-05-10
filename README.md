@@ -1,15 +1,21 @@
-# YouTube Summary Extension with Claude Code
+# AI Summary Extension (Claude + Codex)
 
-Generate AI summaries of YouTube videos using your Claude Code subscription and save key learnings to Apple Notes with folder-based organization.
+Generate AI summaries of **any web content** — YouTube videos, articles, web pages, and selected text — using your Claude Code or OpenAI Codex subscription. Save key learnings to Apple Notes, sync action items to Apple Reminders, and optionally listen to summaries via ElevenLabs text-to-speech.
 
 ## Features
 
-- **AI-Powered Summaries**: Uses Claude Code CLI to generate concise summaries of YouTube videos
-- **Key Learnings Extraction**: Automatically extracts 5-7 actionable takeaways
-- **Apple Notes Integration**: Save summaries to Apple Notes with folder organization
-- **No API Costs**: Uses your existing Claude Code subscription via Native Messaging
-- **YouTube Transcript**: Automatically fetches video transcripts
-- **Beautiful UI**: Clean sidebar interface on YouTube
+- **Works on anything** — YouTube videos, articles, generic web pages, text selections, and HTML5 videos with captions
+- **Two AI providers** — Claude CLI and OpenAI Codex CLI (OAuth), pick per task or run them side-by-side in **Compare mode**
+- **Key learnings + action items** — concise summary plus 5–7 actionable takeaways and a separate task list
+- **Apple Notes** — save summaries to a folder of your choice (folders are auto-created)
+- **Apple Reminders sync** — push action items as reminders with one click
+- **Audio narration** — ElevenLabs text-to-speech for summary / learnings / actions (bring your own ElevenLabs API key)
+- **Multi-turn follow-up chat** — keep asking with the full transcript and prior turns in context
+- **Transcript search + viewer** — search and highlight inside the original transcript
+- **Customisable templates** — per-content-type prompt instructions and output sections
+- **Right-click "Summarize selection"** — works on any page
+- **Chrome and Safari** — same extension source, native bridge for each
+- **No AI API costs** — uses your existing Claude / Codex subscriptions via local CLI auth (only ElevenLabs needs an API key, and only if you turn audio on)
 
 ## 📖 User Guide
 
@@ -17,12 +23,14 @@ For detailed usage instructions with screenshots, see the **[Wiki](../../wiki)**
 
 ## Prerequisites
 
-- **macOS** (for Apple Notes integration)
+- **macOS** (for Apple Notes / Reminders integration)
 - **Google Chrome / Chromium** *or* **Safari** (see [Safari install](#safari-installation))
-- **Node.js** (v14 or higher) - [Download](https://nodejs.org/)
-- **Claude Code CLI** - Must be installed and accessible in your PATH
-- **Claude Code Subscription** - Required to generate summaries
-- **Xcode** (Safari only) - Required to build the wrapper app
+- **Node.js** (v14 or higher) — [Download](https://nodejs.org/)
+- **At least one AI CLI**, authenticated:
+  - **Claude Code CLI** with an active Claude subscription (`claude login`), or
+  - **OpenAI Codex CLI** with an active subscription (`codex login`)
+- **Xcode** (Safari only) — required to build the wrapper app
+- **ElevenLabs API key** (optional) — only needed if you want audio narration
 
 ### Installing Claude Code
 
@@ -136,12 +144,20 @@ The script:
 
 ### Generating Summaries
 
-1. Navigate to any YouTube video with captions/subtitles
-2. Click the **AI Summary** button that appears in the video controls
-3. A sidebar will open on the right
+1. Navigate to any supported page:
+   - A YouTube video with captions / subtitles
+   - An article or blog post
+   - Any generic web page (best-effort extraction)
+   - Or, on any page: highlight some text, right-click, choose **Summarize selection**
+2. Click the **AI Summary** floating button (or the compact toast in the
+   bottom-right corner) — the sidebar opens on the right
+3. (Optional) In the sidebar header, switch the AI provider between
+   **Claude** and **Codex**, or pick **Compare** to run both at once
 4. Click **Generate Summary**
-5. Wait while Claude Code analyzes the transcript (this may take 1-2 minutes)
-6. Review the summary and key learnings
+5. Wait while the provider analyses the content (typically 30 s – 2 min)
+6. Review the summary, key learnings, action items, and relevant links
+7. Use **Follow-up** to ask multi-turn questions with the full content in
+   context
 
 ### Saving to Apple Notes
 
@@ -178,58 +194,84 @@ Each note includes:
 ## Architecture
 
 ```
-┌─────────────────┐
-│  YouTube Page   │
-│  (Content.js)   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Sidebar UI     │
-│  (sidebar.js)   │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Background.js  │
-│  (Service Worker)
-└────────┬────────┘
-         │ Native Messaging
-         ▼
-┌─────────────────┐
-│   host.js       │
-│  (Node.js)      │
-└────────┬────────┘
-         │
-    ┌────┴────┬────────────┬────────────┐
-    ▼         ▼            ▼            ▼
-┌────────┐ ┌──────┐ ┌────────────┐ ┌──────────┐
-│YouTube │ │Claude│ │Apple Notes │ │          │
-│Transcript│ │Code │ │(AppleScript)│ │          │
-└────────┘ └──────┘ └────────────┘ └──────────┘
+        Browser (Chrome or Safari)
+┌──────────────────────────────────────────────┐
+│ content-detector.js  →  picks an extractor   │
+│   ├─ youtube-extractor.js                    │
+│   ├─ article-extractor.js                    │
+│   ├─ webpage-extractor.js                    │
+│   ├─ video-extractor.js                      │
+│   └─ selection-extractor.js                  │
+│                                              │
+│ sidebar.js  ◄──postMessage──►  extractor     │
+│      │                                       │
+│      └─ chrome.runtime.sendMessage           │
+│                  │                           │
+│                  ▼                           │
+│           background.js                      │
+└──────────────────┼───────────────────────────┘
+                   │ Native Messaging (Chrome)
+                   │ XPC + LaunchAgent (Safari)
+                   ▼
+        ┌─────────────────────────┐
+        │       host.js           │
+        │  getBridge(provider)    │
+        └─┬────┬──────┬─────┬─────┘
+          │    │      │     │
+          ▼    ▼      ▼     ▼
+   claude- codex- apple- elevenlabs
+   bridge  bridge notes  .js
+   (CLI)   (CLI)  (+reminders)
 ```
+
+For the full Safari topology (XPC service + Aqua-session LaunchAgent
+that lets `host.js` reach the keychain), see
+[`AGENTS.md`](AGENTS.md#6-safari-bridge-xpc-service--aqua-session-launchagent)
+and [`docs/safari-troubleshooting.md`](docs/safari-troubleshooting.md).
 
 ## File Structure
 
 ```
 youtube-summary-extension/
-├── extension/                  # Chrome extension
-│   ├── manifest.json           # Extension config
-│   ├── content.js              # Injected into YouTube
-│   ├── background.js           # Native messaging handler
-│   └── sidebar/
-│       ├── sidebar.html        # Sidebar UI
-│       ├── sidebar.js          # Sidebar logic
-│       └── styles.css          # Styling
-├── native-host/                # Native messaging host
-│   ├── host.js                 # Main entry point
-│   ├── transcript-extractor.js # YouTube transcript fetching
-│   ├── claude-bridge.js        # Claude Code integration
-│   ├── apple-notes.js          # AppleScript wrapper
-│   ├── package.json            # Dependencies
-│   └── com.youtube.summary.json # Native messaging manifest
-├── install.sh                  # Installation script
-└── README.md                   # This file
+├── extension/                       # Web extension source (Chrome + Safari)
+│   ├── manifest.json                # Manifest V3
+│   ├── background.js                # Service worker / native messaging
+│   ├── content-detector.js          # Picks an extractor per page
+│   ├── content.js                   # Legacy stub (do not edit)
+│   ├── extractors/                  # Per-content-type extractors + shared UI
+│   │   ├── base-extractor.js        # Floating button, toast, sidebar shell
+│   │   ├── youtube-extractor.js
+│   │   ├── article-extractor.js
+│   │   ├── webpage-extractor.js
+│   │   ├── video-extractor.js
+│   │   └── selection-extractor.js
+│   ├── lib/readability.js           # Vendored
+│   ├── sidebar/                     # Sidebar UI (HTML / JS / CSS)
+│   └── settings/                    # Settings page (HTML / JS / CSS)
+├── native-host/                     # Node.js native host
+│   ├── host.js                      # Entry point — routes all actions
+│   ├── claude-bridge.js             # Claude CLI provider
+│   ├── codex-bridge.js              # Codex CLI provider
+│   ├── elevenlabs.js                # TTS audio
+│   ├── apple-notes.js               # AppleScript → Notes
+│   ├── apple-reminders.js           # AppleScript → Reminders
+│   ├── agent-server.js              # Safari-only Unix-socket wrapper
+│   ├── logger.js                    # Shared file logger
+│   ├── package.json
+│   ├── com.youtube.summary.json     # Chrome native-messaging manifest
+│   └── com.altonfong.aisummary.host.plist.template  # Safari LaunchAgent
+├── safari/                          # Xcode project for the Safari wrapper
+├── docs/                            # Long-form developer docs
+│   ├── safari-troubleshooting.md
+│   └── plans/
+├── wiki/                            # GitHub wiki source (user guide)
+├── install.sh                       # Chrome installer
+├── install-safari.sh                # Safari installer (xcodebuild)
+├── README.md                        # This file
+├── AGENTS.md                        # Developer / architecture guide
+├── CLAUDE.md                        # Symlink → AGENTS.md
+├── FEATURES.md                      # Feature request + implementation log
+└── PLAN.md                          # Original implementation plan
 ```
 
 ## Troubleshooting
@@ -244,15 +286,17 @@ youtube-summary-extension/
 3. Check that `host.js` is executable: `chmod +x native-host/host.js`
 4. Reload the extension in `chrome://extensions/`
 
-### Claude Code Not Found
+### Claude Code / Codex CLI Not Found
 
-**Error**: "Claude Code CLI not found"
+**Error**: "Claude Code CLI not found" or "Codex CLI not found"
 
 **Solutions**:
-1. Verify Claude Code is installed: `which claude`
-2. Ensure it's in your PATH
-3. Try running `claude` directly in terminal
-4. Reinstall Claude Code if needed
+1. Verify the CLI is installed: `which claude` or `which codex`
+2. Ensure it's in your shell PATH
+3. Try running it directly in the terminal
+4. Reinstall if needed
+5. The settings page surfaces auth status for both providers — if Claude
+   shows green and Codex shows red (or vice versa), pick the green one
 
 ### No Transcript Available
 
@@ -298,21 +342,26 @@ tail -f native-host/extension.log
 
 ## Limitations
 
-- **macOS only** (due to Apple Notes integration)
-- **Videos with transcripts only** (captions/subtitles must be available)
-- **Processing time**: 1-2 minutes for summary generation
-- **Claude Code required**: Must have active subscription
+- **macOS only** (Apple Notes / Reminders integration uses AppleScript)
+- **YouTube videos need captions** — videos without captions / subtitles
+  can't be summarised. Articles, generic pages, and selections do not
+  have this constraint
+- **Processing time**: typically 30 s – 2 min depending on content length
+  and provider
+- **At least one CLI subscription** — Claude or Codex
+- **Safari has no streaming progress** — Safari shows a spinner instead of
+  the staged progress UI Chrome shows; the final result is identical
+- **Audio narration** requires an ElevenLabs API key
 
 ## Future Enhancements
 
 Potential features for future versions:
 
-- Spaced repetition reminders via Apple Reminders
+- Spaced repetition reminders
 - Support for other video platforms (Vimeo, etc.)
-- Export to other note apps (Notion, Obsidian)
-- Custom prompt templates
+- Notion / Obsidian export
 - Batch processing of playlists
-- Export summaries as PDF/Markdown
+- Export summaries as PDF / Markdown
 
 ## Contributing
 
@@ -325,10 +374,11 @@ MIT License - use freely for personal or commercial projects.
 ## Credits
 
 Built with:
-- [Chrome Extension APIs](https://developer.chrome.com/docs/extensions/)
+- [Chrome Extension APIs](https://developer.chrome.com/docs/extensions/) and Safari Web Extensions
 - [Claude Code CLI](https://code.claude.com)
-- [youtube-transcript](https://www.npmjs.com/package/youtube-transcript)
-- AppleScript for Notes integration
+- [OpenAI Codex CLI](https://github.com/openai/codex)
+- [ElevenLabs](https://elevenlabs.io) (optional TTS)
+- AppleScript for Notes / Reminders integration
 
 ---
 

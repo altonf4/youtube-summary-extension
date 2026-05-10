@@ -57,7 +57,21 @@ The extension can't communicate with the native host.
    ls ~/Library/Application\ Support/Google/Chrome/NativeMessagingHosts/
    ```
 
-## Claude Issues
+## Provider / CLI Issues
+
+The extension supports two AI providers — **Claude CLI** and **OpenAI Codex CLI**. The settings page shows live status dots for each. You only need one to be green; pick that one as your active provider.
+
+### "Codex CLI not found"
+
+**Solutions:**
+
+1. Install the Codex CLI:
+   ```bash
+   npm install -g @openai/codex
+   codex login
+   ```
+2. Verify auth: `cat ~/.codex/auth.json` should exist after `codex login`
+3. If you installed via Homebrew's Node and the LaunchAgent (Safari) can't find Codex, check the logs — `findCodexCommand()` scans Homebrew's Node Cellar paths automatically, but a non-standard install location may need a fresh `./install-safari.sh` run
 
 ### "Claude Code CLI not found"
 
@@ -262,6 +276,32 @@ tail -50 native-host/extension.log
 
 ### Log Rotation
 Logs auto-rotate when exceeding 1MB. Old entries are pruned automatically.
+
+## Safari Issues
+
+The Safari port has more moving parts than Chrome (XPC service +
+LaunchAgent so the CLI can reach the keychain). For deep Safari debugging,
+read the project's
+[`docs/safari-troubleshooting.md`](https://github.com/altfong/youtube-summary-extension/blob/main/docs/safari-troubleshooting.md)
+runbook — it covers the bridge architecture, common failure modes, and
+the exact `launchctl` and `xcodebuild` incantations.
+
+Quick checks:
+
+1. Did `./install-safari.sh` finish without errors?
+2. Is the LaunchAgent loaded?
+   ```bash
+   launchctl list | grep com.altonfong.aisummary.host
+   ```
+3. Is the socket present?
+   ```bash
+   ls -la ~/Library/Caches/com.altonfong.aisummary/host.sock
+   ```
+4. Does Safari show the extension under Settings → Extensions?
+5. Did you opt into **Develop → Allow Unsigned Extensions** if Safari refused to load it?
+
+Note: Safari does not stream progress — it shows a spinner while Claude /
+Codex works. That is expected, not a bug.
 
 ## Reporting Issues
 
